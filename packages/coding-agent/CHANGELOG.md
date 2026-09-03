@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed `/retry` in the TUI reporting "Nothing to retry" while a response is streaming; it now says to wait for or abort the active response first.
+
 ## [18.1.6] - 2026-09-03
 
 ### Breaking Changes

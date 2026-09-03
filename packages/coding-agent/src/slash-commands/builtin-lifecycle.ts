@@ -519,8 +519,9 @@ export const BUILTIN_LIFECYCLE_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> =
 			return commandConsumed({ agentInvoked: true });
 		},
 		handleTui: async (_command, runtime) => {
-			const didRetry = await runtime.ctx.session.retry();
-			if (!didRetry) {
+			if (runtime.ctx.session.isStreaming) {
+				runtime.ctx.showStatus("Wait for the current response to finish or abort it before retrying");
+			} else if (!(await runtime.ctx.session.retry())) {
 				runtime.ctx.showStatus("Nothing to retry");
 			}
 			runtime.ctx.editor.setText("");

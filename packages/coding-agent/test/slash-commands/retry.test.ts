@@ -7,7 +7,7 @@ import {
 import { executeBuiltinSlashCommand } from "@oh-my-pi/pi-coding-agent/slash-commands/builtin-registry";
 import type { SlashCommandRuntime } from "@oh-my-pi/pi-coding-agent/slash-commands/types";
 
-function createRuntime(didRetry: boolean) {
+function createRuntime(didRetry: boolean, isStreaming = false) {
 	const retry = vi.fn(async () => didRetry);
 	const showStatus = vi.fn();
 	const setText = vi.fn();
@@ -17,7 +17,7 @@ function createRuntime(didRetry: boolean) {
 		setText,
 		runtime: {
 			ctx: {
-				session: { retry } as unknown as InteractiveModeContext["session"],
+				session: { isStreaming, retry } as unknown as InteractiveModeContext["session"],
 				editor: { setText } as unknown as InteractiveModeContext["editor"],
 				showStatus,
 			} as unknown as InteractiveModeContext,
@@ -45,6 +45,19 @@ describe("/retry slash command", () => {
 		expect(handled).toBe(true);
 		expect(harness.retry).toHaveBeenCalledTimes(1);
 		expect(harness.showStatus).toHaveBeenCalledWith("Nothing to retry");
+		expect(harness.setText).toHaveBeenCalledWith("");
+	});
+
+	it("reports the busy state instead of Nothing to retry while streaming", async () => {
+		const harness = createRuntime(false, true);
+
+		const handled = await executeBuiltinSlashCommand("/retry", harness.runtime);
+
+		expect(handled).toBe(true);
+		expect(harness.retry).not.toHaveBeenCalled();
+		expect(harness.showStatus).toHaveBeenCalledWith(
+			"Wait for the current response to finish or abort it before retrying",
+		);
 		expect(harness.setText).toHaveBeenCalledWith("");
 	});
 });
