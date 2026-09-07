@@ -359,6 +359,14 @@ describe("Editor component", () => {
 			expect(editor.getText()).toBe("> ```\n>  - literal\n");
 		});
 
+		it("does not keep an outdented sibling inside a list-context fence", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("- parent\n  ```\n- next");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("- parent\n  ```\n- next\n- ");
+		});
+
 		it("resumes continuation after a blockquoted fence closes", () => {
 			const editor = new Editor(defaultEditorTheme);
 			editor.setListContinuation(true);

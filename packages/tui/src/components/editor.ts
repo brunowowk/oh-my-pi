@@ -109,23 +109,21 @@ const FENCE_LINE_RE = /^([\t ]*)((?:>[ \t]*)+[\t ]*)?(?:([-*+]|\d{1,9}[.)])([\t 
  *  Indentation beyond the top-level bound is either the containing list's indent or
  *  indented code — neither continues a list. */
 const THEMATIC_BREAK_RE = /^(?:(?:[\t ]*>?[ \t]*)*)([-*_])[ \t]*(?:\1[ \t]*){2,}$/;
-
 /**
  * Whether the line at `lineIndex` sits inside an open fenced code block: walk the lines
  * above it, tracking the open fence's marker character, length, floor, and container —
  * the floor is the minimum container-indent that stays inside (list content indent for
- * marker-opened fences, the top-level code bound of four for indented fence tokens, the
- * quoted fence's own column, or zero for a top-level fence, which only its closer ends).
- * Container indent counts both leading whitespace and blockquote prefixes, so a quoted
- * line stays inside its quoted fence. A line closes the fence only when it is bare — no
- * list marker — uses the same character and container, is at least as long, has no info
- * string, and sits at or above the floor within three columns; a shallower fence-shaped
- * line stays literal.
+ * marker-opened fences and for bare fences inside a preceding list item's content, the
+ * top-level code bound of four for indented fence tokens, the quoted fence's own column,
+ * or zero for a top-level fence, which only its closer ends). A line closes the fence
+ * only when it is bare — no list marker — uses the same character and container, is at
+ * least as long, has no info string, and sits at or above the floor within three columns;
+ * a shallower fence-shaped line stays literal.
  *
  * A non-blank line below the floor ends list-content, quoted, and indented-code fence
- * state, and the cursor line's own outdent counts too — so an indented or quoted fence
- * token does not swallow a following outdented list. A fence-shaped line on such an
- * outdent opens a fresh top-level fence instead.
+ * state, and the cursor line's own outdent counts too — so an indented, quoted, or
+ * list-nested fence token does not swallow a following outdented list. A fence-shaped
+ * line on such an outdent opens a fresh top-level fence instead.
  *
  * Fence-shape at any container is treated as code state: a backtick line indented past
  * the top-level fence bound is either a fence nested under a list item or an indented
@@ -134,6 +132,26 @@ const THEMATIC_BREAK_RE = /^(?:(?:[\t ]*>?[ \t]*)*)([-*_])[ \t]*(?:\1[ \t]*){2,}
  * indistinguishable without full list-context parsing, and misclassifying nested-list
  * indentation would break list continuation.
  */
+
+/**
+ * Content indent of the enclosing list item for a bare fence opener at `fenceIndex`:
+ * walk back over the directly preceding list-item chain (blanks skipped, any other
+ * non-blank line stops it) and take the deepest item whose content indent the fence
+ * reaches. Null when no list context applies.
+ */
+function enclosingListFloor(lines: readonly string[], fenceIndex: number, fenceIndent: number): number | null {
+	let floor: number | null = null;
+	for (let index = fenceIndex - 1; index >= 0; index--) {
+		const line = lines[index] ?? "";
+		if (line.trim() === "") continue;
+		const match = LIST_MARKER_RE.exec(line);
+		if (!match) break;
+		const contentIndent = match[0].length;
+		if (contentIndent <= fenceIndent) floor = contentIndent;
+	}
+	return floor;
+}
+
 function insideFencedCode(lines: readonly string[], lineIndex: number): boolean {
 	let open: string | undefined; // marker character of the currently open fence
 	let openLength = 0;
@@ -154,7 +172,12 @@ function insideFencedCode(lines: readonly string[], lineIndex: number): boolean 
 				if (opensFence) {
 					open = fence[0];
 					openLength = fence.length;
-					openFloor = quote !== undefined || markered ? indent : indent > 3 ? 4 : 0;
+					openFloor =
+						quote !== undefined || markered
+							? indent
+							: indent > 3
+								? 4
+								: (enclosingListFloor(lines, index, indent) ?? 0);
 					openQuoteDepth = quoteDepth;
 				}
 			} else if (
