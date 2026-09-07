@@ -98,10 +98,11 @@ function listContinuation(before: string, after: string): ListContinuation | nul
 	return { before, prefix: `${container}${bullet}${ws || " "}`, terminate: false };
 }
 
-/** A fenced code block delimiter line: any indent (fences nest inside list items), an
- *  optional list marker the fence may open directly after (`- ``` `), then 3+ backticks
- *  or tildes; the capture after the fence is the (possibly empty) info string. */
-const FENCE_LINE_RE = /^([\t ]*)(?:([-*+]|\d{1,9}[.)])([\t ]*))?(`{3,}|~{3,})(.*)$/;
+/** A fenced code block delimiter line: a container prefix — blockquote (`> `) and/or
+ *  indent, or a list marker the fence may open directly after, which requires separating
+ *  whitespace between marker and fence — then 3+ backticks or tildes; the capture after
+ *  the fence is the (possibly empty) info string. */
+const FENCE_LINE_RE = /^([\t ]*)((?:>[ \t]*)+[\t ]*)?(?:([-*+]|\d{1,9}[.)])([\t ]+))?(`{3,}|~{3,})(.*)$/;
 
 /** A thematic break at any container prefix (indent, blockquote, or both): 3+ of one
  *  marker character (`-`, `*` or `_`), each optionally separated by spaces or tabs.
@@ -111,24 +112,25 @@ const THEMATIC_BREAK_RE = /^(?:(?:[\t ]*>?[ \t]*)*)([-*_])[ \t]*(?:\1[ \t]*){2,}
 
 /**
  * Whether the line at `lineIndex` sits inside an open fenced code block: walk the lines
- * above it, tracking the open fence's marker character, length, and floor — the minimum
- * indentation that stays inside. A fence opened after a list marker floors at its list
- * content indent, an indented fence token floors at the top-level code bound (four), and
- * a top-level fence floors at zero (nothing ends it but its closer). A line closes the
- * only when it is a bare fence — no list marker — using the same character, at least as
- * long, with no info string, indented at or above the floor, and within three columns of
- * it; a fence nested under a list item closes within its list context, and a shallower
- * fence-shaped line stays literal (or opens a fresh top-level fence on an outdent).
+ * above it, tracking the open fence's marker character, length, floor, and container —
+ * the floor is the minimum container-indent that stays inside (list content indent for
+ * marker-opened fences, the top-level code bound of four for indented fence tokens, the
+ * quoted fence's own column, or zero for a top-level fence, which only its closer ends).
+ * Container indent counts both leading whitespace and blockquote prefixes, so a quoted
+ * line stays inside its quoted fence. A line closes the fence only when it is bare — no
+ * list marker — uses the same character and container, is at least as long, has no info
+ * string, and sits at or above the floor within three columns; a shallower fence-shaped
+ * line stays literal.
  *
- * A non-blank line above the floor ends list-content and indented-code fence state, and
- * the cursor line's own outdent counts too — so an indented fence token does not swallow
- * a following outdented list. A fence-shaped line on such an outdent opens a fresh
- * top-level fence instead.
+ * A non-blank line below the floor ends list-content, quoted, and indented-code fence
+ * state, and the cursor line's own outdent counts too — so an indented or quoted fence
+ * token does not swallow a following outdented list. A fence-shaped line on such an
+ * outdent opens a fresh top-level fence instead.
  *
- * Fence-shape at any indent is treated as code state: a backtick line indented past the
- * top-level fence bound is either a fence nested under a list item or an indented code
- * block, and both should keep list continuation out of their literal content. Indented
- * prose is not tracked separately — list indentation and indented code are
+ * Fence-shape at any container is treated as code state: a backtick line indented past
+ * the top-level fence bound is either a fence nested under a list item or an indented
+ * code block, and both should keep list continuation out of their literal content.
+ * Indented prose is not tracked separately — list indentation and indented code are
  * indistinguishable without full list-context parsing, and misclassifying nested-list
  * indentation would break list continuation.
  */
@@ -136,23 +138,27 @@ function insideFencedCode(lines: readonly string[], lineIndex: number): boolean 
 	let open: string | undefined; // marker character of the currently open fence
 	let openLength = 0;
 	let openFloor = 0;
+	let openQuote: string | undefined; // blockquote prefix of the opener, when quoted
 	for (let index = 0; index < lineIndex; index++) {
 		const line = lines[index] ?? "";
 		const match = FENCE_LINE_RE.exec(line);
 		if (match) {
-			const fence = match[4]!;
-			const markered = match[2] !== undefined;
-			const indent = match[1]!.length + (markered ? match[2]!.length + match[3]!.length : 0);
-			const info = match[5]!;
+			const fence = match[5]!;
+			const quote = match[2];
+			const markered = match[3] !== undefined;
+			const indent = match[1]!.length + (quote?.length ?? 0) + (markered ? match[3]!.length + match[4]!.length : 0);
+			const info = match[6]!;
 			const opensFence = !(fence[0] === "`" && info.includes("`"));
 			if (open === undefined) {
 				if (opensFence) {
 					open = fence[0];
 					openLength = fence.length;
-					openFloor = markered ? indent : indent > 3 ? 4 : 0;
+					openFloor = quote !== undefined || markered ? indent : indent > 3 ? 4 : 0;
+					openQuote = quote;
 				}
 			} else if (
 				!markered &&
+				quote === openQuote &&
 				fence[0] === open &&
 				fence.length >= openLength &&
 				info.trim() === "" &&
@@ -167,19 +173,24 @@ function insideFencedCode(lines: readonly string[], lineIndex: number): boolean 
 					open = fence[0];
 					openLength = fence.length;
 					openFloor = 0;
+					openQuote = undefined;
 				} else {
 					open = undefined;
 				}
 			}
 			continue;
 		}
-		const lineIndent = /^[\t ]*/.exec(line)![0].length;
+		const lineIndent = /^(?:[\t ]*>?[ \t]*)*/.exec(line)![0].length;
 		if (open !== undefined && line.trim() !== "" && lineIndent < openFloor) open = undefined;
 	}
 	if (open !== undefined) {
 		// The cursor line can be the outdent that ends the context.
 		const current = lines[lineIndex] ?? "";
-		if (!FENCE_LINE_RE.exec(current) && current.trim() !== "" && /^[\t ]*/.exec(current)![0].length < openFloor) {
+		if (
+			!FENCE_LINE_RE.exec(current) &&
+			current.trim() !== "" &&
+			/^(?:[\t ]*>?[ \t]*)*/.exec(current)![0].length < openFloor
+		) {
 			return false;
 		}
 	}

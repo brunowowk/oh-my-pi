@@ -335,6 +335,38 @@ describe("Editor component", () => {
 			expect(editor.getText()).toBe("> > 1. item\n> > 2. ");
 		});
 
+		it("keeps bullets literal inside a blockquoted fence", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("> ```\n> - literal");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("> ```\n> - literal\n");
+		});
+
+		it("resumes continuation after a blockquoted fence closes", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("> ```\n> - literal\n> ```\n> - item");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("> ```\n> - literal\n> ```\n> - item\n> - ");
+		});
+
+		it("treats an unquoted fence line inside a quoted fence as a new top-level fence", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("> ```\n```\n> - literal");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("> ```\n```\n> - literal\n");
+		});
+
+		it("does not treat a marker-glued fence as opening code state", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("-```js\n- literal");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("-```js\n- literal\n- ");
+		});
+
 		it("stays inside a fence whose closing marker is shorter than the opener", () => {
 			const editor = new Editor(defaultEditorTheme);
 			editor.setListContinuation(true);
