@@ -572,6 +572,9 @@ export class SelectorController {
 				this.ctx.syncEditorSpelling();
 				this.ctx.ui.requestRender();
 				break;
+			case "tui.listContinuation":
+				this.ctx.syncEditorListContinuation();
+				break;
 
 			// Settings with UI side effects
 			case "display.hideToolActivity": {

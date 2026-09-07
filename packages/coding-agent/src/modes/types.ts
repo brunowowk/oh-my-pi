@@ -134,6 +134,7 @@ export interface InteractiveModeContext {
 	statusLine: StatusLineComponent;
 	syncComposerShape(): void;
 	syncEditorSpelling(): void;
+	syncEditorListContinuation(): void;
 
 	// Session access
 	session: AgentSession;

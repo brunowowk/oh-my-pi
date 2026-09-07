@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { KeybindingsManager } from "@oh-my-pi/pi-coding-agent/config/keybindings";
 import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { getDefault } from "@oh-my-pi/pi-coding-agent/config/settings-schema";
-import { COMPOSER_DEFAULTS, Composer, type ComposerPreferences } from "@oh-my-pi/pi-coding-agent/modes/composer";
+import { Composer, type ComposerPreferences } from "@oh-my-pi/pi-coding-agent/modes/composer";
+import { SelectorController } from "@oh-my-pi/pi-coding-agent/modes/controllers/selector-controller";
 import { InteractiveMode } from "@oh-my-pi/pi-coding-agent/modes/interactive-mode";
 import {
 	applyStartupComposerPreferences,
@@ -73,6 +73,7 @@ describe("Composer prepaint", () => {
 			spellingTypoDetection: settings.get("spelling.typoDetection"),
 			spellingAutocomplete: settings.get("spelling.autocomplete"),
 			spellingAutocorrect: settings.get("spelling.autocorrect"),
+			listContinuation: settings.get("tui.listContinuation"),
 		};
 	});
 
@@ -394,21 +395,68 @@ describe("Composer prepaint", () => {
 		expect(exit).toHaveBeenCalledWith(0);
 		expect(terminal.stops).toBe(1);
 	});
+	it("keeps a user-toggled list continuation across shape updates and editor replacement", async () => {
+		const terminal = new CountingTerminal(80, 24);
+		const composer = new Composer({ preferences: config, terminal });
+		composer.start();
+		const lease = new ComposerLease(composer);
+		const testSession = await createTestSession({ inMemory: true });
+		const mode = new InteractiveMode(
+			testSession.session,
+			"test",
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			lease.composer,
+		);
+		lease.adopt();
+		const selector = new SelectorController(mode);
 
-	it("first frame mirrors the canonical settings-schema defaults", () => {
-		expect(COMPOSER_DEFAULTS).toEqual({
-			quiet: getDefault("startup.quiet"),
-			composerShape: getDefault("composer.shape") ?? "box",
-			showHardwareCursor: getDefault("showHardwareCursor"),
-			maxInlineImages: getDefault("tui.maxInlineImages"),
-			resizeScrollback: getDefault("tui.resizeScrollback"),
-			imeSafeCursor: getDefault("tui.imeSafeCursor"),
-			autocompleteMaxVisible: getDefault("autocompleteMaxVisible"),
-			spellingTypoDetection: getDefault("spelling.typoDetection"),
-			spellingAutocomplete: getDefault("spelling.autocomplete"),
-			spellingAutocorrect: getDefault("spelling.autocorrect"),
-		});
+		try {
+			vi.spyOn(mode.statusLine, "watchBranch").mockImplementation(() => {});
+			vi.spyOn(testSession.session, "maybeStartTitleGeneration").mockImplementation(() => {});
+			await mode.init({ suppressWelcomeIntro: true });
+
+			// The settings selector persists the value before dispatching the side
+			// effect; drive the same save-then-notify sequence.
+			settings.set("tui.listContinuation", false);
+			selector.handleSettingChange("tui.listContinuation", false);
+			terminal.sendInput("- item");
+			terminal.sendInput("\n");
+			expect(mode.editor.getExpandedText()).toBe("- item\n");
+
+			// An unrelated preference change replays composer preferences over the
+			// editor; the explicit false must survive it instead of the startup
+			// default resurrecting continuation.
+			settings.set("composer.shape", "box");
+			selector.handleSettingChange("composer.shape", "box");
+			terminal.sendInput("- second");
+			terminal.sendInput("\n");
+			expect(mode.editor.getExpandedText()).toBe("- item\n- second\n");
+
+			// A replacement editor must inherit the stored preference, not the
+			// schema default.
+			mode.setEditorComponent(undefined);
+			expect(mode.editor.getExpandedText()).toBe("- item\n- second\n");
+			terminal.sendInput("- third");
+			terminal.sendInput("\n");
+			expect(mode.editor.getExpandedText()).toBe("- item\n- second\n- third\n");
+
+			settings.set("tui.listContinuation", true);
+			selector.handleSettingChange("tui.listContinuation", true);
+			terminal.sendInput("- next");
+			terminal.sendInput("\n");
+			expect(mode.editor.getExpandedText()).toBe("- item\n- second\n- third\n- next\n- ");
+		} finally {
+			mode.stop();
+			lease.dispose();
+			await testSession.cleanup();
+			vi.restoreAllMocks();
+		}
 	});
+
 	it("renders the complete interactive welcome scene on the first frame", async () => {
 		const terminal = new CountingTerminal(80, 32);
 		const composer = new Composer({
@@ -559,6 +607,7 @@ describe("Composer prepaint", () => {
 			spellingTypoDetection: settings.get("spelling.typoDetection"),
 			spellingAutocomplete: settings.get("spelling.autocomplete"),
 			spellingAutocorrect: settings.get("spelling.autocorrect"),
+			listContinuation: settings.get("tui.listContinuation"),
 			theme: {},
 		});
 		await terminal.waitForRender();

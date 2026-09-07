@@ -35,6 +35,7 @@ export interface ComposerPreferences {
 	readonly spellingTypoDetection: boolean;
 	readonly spellingAutocomplete: boolean;
 	readonly spellingAutocorrect: boolean;
+	readonly listContinuation: boolean;
 }
 
 /** Settings-schema-compatible defaults used when constructing a dependency-free composer. */
@@ -49,6 +50,7 @@ export const COMPOSER_DEFAULTS: ComposerPreferences = {
 	spellingTypoDetection: true,
 	spellingAutocomplete: true,
 	spellingAutocorrect: false,
+	listContinuation: true,
 };
 
 /** Welcome data that can be supplied initially or patched as startup resolves it. */
@@ -226,6 +228,7 @@ export class Composer implements TerminalFrameProvider {
 			autocomplete: this.#preferences.spellingAutocomplete,
 			autocorrect: this.#preferences.spellingAutocorrect,
 		});
+		this.editor.setListContinuation(this.#preferences.listContinuation);
 		try {
 			this.editor.setBorderStyle(this.#preferences.composerShape);
 		} catch {
@@ -559,6 +562,7 @@ export class Composer implements TerminalFrameProvider {
 			autocomplete: this.#preferences.spellingAutocomplete,
 			autocorrect: this.#preferences.spellingAutocorrect,
 		});
+		this.editor.setListContinuation(this.#preferences.listContinuation);
 		this.#applyStatusSnapshot();
 		if (this.#preferences.quiet) {
 			this.#welcome?.stopIntro();

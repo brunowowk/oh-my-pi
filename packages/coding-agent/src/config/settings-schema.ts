@@ -2118,6 +2118,18 @@ export const SETTINGS_SCHEMA = {
 		},
 	},
 
+	"tui.listContinuation": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "interaction",
+			group: "Input",
+			label: "Markdown List Continuation",
+			description:
+				"Continue Markdown lists when breaking a line: `1. first` starts the next line with `2. `, bullets re-emit themselves; an empty item ends the list",
+		},
+	},
+
 	"paste.largeMenuThreshold": {
 		type: "number",
 		default: 100,

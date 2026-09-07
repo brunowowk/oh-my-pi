@@ -94,6 +94,172 @@ describe("Editor component", () => {
 		});
 	});
 
+	describe("Markdown list continuation", () => {
+		it("continues a numbered list with the next number on Shift+Enter", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("1. first item");
+			editor.handleInput("\x1b[13;2~"); // Shift+Enter (legacy CSI)
+			expect(editor.getText()).toBe("1. first item\n2. ");
+			expect(editor.debugState().cursorCol).toBe(3);
+		});
+
+		it("continues numbering from the typed start", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("16. item");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("16. item\n17. ");
+		});
+
+		it("keeps the ordered-list delimiter and indentation", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("  1) nested");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("  1) nested\n  2) ");
+		});
+
+		it("continues bullet lists with the same bullet and indentation", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("  - nested");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("  - nested\n  - ");
+		});
+
+		it("splits mid-item content after the marker", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("1. ab");
+			editor.handleInput("\x1b[D"); // Left arrow — cursor between a and b
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("1. a\n2. b");
+			expect(editor.debugState().cursorCol).toBe(3);
+		});
+
+		it("ends the list when breaking a completed empty item", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("1. first\n2. ");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("1. first\n");
+			expect(editor.debugState().cursorLine).toBe(1);
+			expect(editor.debugState().cursorCol).toBe(0);
+		});
+
+		it("treats a bare marker ending at the cursor as the next item", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("1.");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("1.\n2. ");
+		});
+
+		it("leaves non-list lines alone", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("hello\n*em* world");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("hello\n*em* world\n");
+		});
+
+		it("does not continue a marker glued to its text", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("1.a");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("1.a\n");
+		});
+
+		it("inserts a plain newline when continuation is disabled", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(false);
+			editor.setText("1. first");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("1. first\n");
+		});
+
+		it("keeps a bullet literal inside a fenced code block", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("```diff\n- removed");
+			editor.handleInput("\x1b[13;2~"); // Shift+Enter
+			expect(editor.getText()).toBe("```diff\n- removed\n");
+		});
+
+		it("splits inside a fenced code block without adding a marker prefix", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("```\n- removed");
+			for (let i = 0; i < 3; i++) editor.handleInput("\x1b[D"); // Left — before "ved"
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("```\n- remo\nved");
+		});
+
+		it("preserves a completed empty item inside a fenced code block", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("```\n- ");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("```\n- \n");
+		});
+
+		it("resumes list continuation after a valid closing fence", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("```diff\n- removed\n```\n- item");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("```diff\n- removed\n```\n- item\n- ");
+			expect(editor.debugState().cursorCol).toBe(2);
+		});
+
+		it("continues a list after backticks that cannot open a code fence", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("```not `an info string`\n- item");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("```not `an info string`\n- item\n- ");
+		});
+
+		it("stays inside a fence whose closing marker is shorter than the opener", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("````\ncode\n```\n- literal");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("````\ncode\n```\n- literal\n");
+		});
+
+		it("stays inside a fence whose closing line carries an info string", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("```\ncode\n```text\n- literal");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("```\ncode\n```text\n- literal\n");
+		});
+
+		it("keeps a backtick line literal inside a tilde fence", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("~~~\n```\n- literal");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("~~~\n```\n- literal\n");
+		});
+
+		it("appends a plain newline after a '* * *' thematic break", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("* * *");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("* * *\n");
+		});
+
+		it("splits a thematic break plainly when the cursor divides it", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("- - -");
+			editor.handleInput("\x1b[D"); // Left
+			editor.handleInput("\x1b[D"); // Left — cursor before " -"
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("- -\n -");
+		});
+
+		it("still continues a bullet whose content opens with the same marker", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("- - item");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("- - item\n- ");
+		});
+
+		it("still continues a list indented past the fence-indent bound", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("- parent\n    - deep");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("- parent\n    - deep\n    - ");
+		});
+	});
+
 	describe("Prompt history navigation", () => {
 		it("does nothing on Up arrow when history is empty", () => {
 			const editor = new Editor(defaultEditorTheme);

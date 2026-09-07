@@ -59,6 +59,71 @@ function sanitizeLoadedText(text: string): string {
 	return replaceTabs(text.replace(/\r\n?/g, "\n")).replace(/[\x00-\x09\x0b-\x1f]/g, "");
 }
 
+/** A Markdown list marker opening a line: optional indent, then `1.`/`1)` or `-`/`*`/`+`,
+ *  then optional whitespace. */
+const LIST_MARKER_RE = /^([ \t]*)(?:(\d{1,9})([.)])|([-*+]))([ \t]*)/;
+
+interface ListContinuation {
+	/** Replacement for the text before the cursor on the broken line. */
+	before: string;
+	/** Prefix for the new line. */
+	prefix: string;
+	/** True when a completed empty item is being terminated: the marker is stripped
+	 *  and the emptied line collapses so the list simply ends. */
+	terminate: boolean;
+}
+
+/**
+ * Continuation for a Markdown list item split by a newline: `1. a` → `2. `,
+ * `- a` → `- `, preserving indentation and the delimiter. A completed empty
+ * item (`1. `, nothing else on the line) terminates the list instead — the
+ * marker is stripped and the emptied item vanishes rather than spawning a
+ * permanent empty item.
+ *
+ * Returns null when the text before the cursor does not open a list item.
+ */
+function listContinuation(before: string, after: string): ListContinuation | null {
+	const match = LIST_MARKER_RE.exec(before);
+	if (!match) return null;
+	const [, indent, num, delim, bullet, ws] = match;
+	// A marker without trailing whitespace is not a list (`1.a`); only a bare
+	// marker ending exactly at the cursor (`1.` as the whole input) continues.
+	if (ws === "" && (after !== "" || match[0].length !== before.length)) return null;
+	if (ws !== "" && after === "" && match[0].length === before.length) {
+		return { before: "", prefix: "", terminate: true };
+	}
+	if (num !== undefined) {
+		return { before, prefix: `${indent}${Number(num) + 1}${delim}${ws || " "}`, terminate: false };
+	}
+	return { before, prefix: `${indent}${bullet}${ws || " "}`, terminate: false };
+}
+
+/** Top-level code fences allow up to three spaces before their marker. */
+const FENCE_LINE_RE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+
+/** A thematic break: up to 3 spaces of indent, then 3+ of one marker character
+ *  (`-`, `*` or `_`), each optionally separated by spaces or tabs. */
+const THEMATIC_BREAK_RE = /^ {0,3}([-*_])[ \t]*(?:\1[ \t]*){2,}$/;
+
+/** Scan preceding lines for an unmatched fence. Nested-list indentation remains unrestricted. */
+function insideFencedCode(lines: readonly string[], lineIndex: number): boolean {
+	let open: string | undefined; // marker character of the currently open fence
+	let openLength = 0;
+	for (let index = 0; index < lineIndex; index++) {
+		const match = FENCE_LINE_RE.exec(lines[index] ?? "");
+		if (!match) continue;
+		const marker = match[1]!;
+		if (open === undefined) {
+			if (marker[0] === "`" && match[2]!.includes("`")) continue;
+			open = marker[0];
+			openLength = marker.length;
+		} else if (marker[0] === open && marker.length >= openLength && match[2]!.trim() === "") {
+			open = undefined;
+		}
+	}
+	return open !== undefined;
+}
+
 const segmenter = getSegmenter();
 
 /**
@@ -758,6 +823,13 @@ export class Editor implements Component, Focusable {
 				this.#autocompleteList?.setMaxVisible(newMaxVisible);
 			}
 		}
+	}
+
+	/** Continue Markdown list items across a newline (`1. a⏎` → `2. `); default on. */
+	#listContinuation = true;
+
+	setListContinuation(enabled: boolean): void {
+		this.#listContinuation = enabled;
 	}
 
 	/** Loads persistent prompts for navigation and enables future persistence. */
@@ -2415,17 +2487,39 @@ export class Editor implements Component, Focusable {
 		this.#recordUndoState();
 
 		const currentLine = this.#state.lines[this.#state.cursorLine] || "";
-
-		const before = currentLine.slice(0, this.#state.cursorCol);
+		let before = currentLine.slice(0, this.#state.cursorCol);
 		const after = currentLine.slice(this.#state.cursorCol);
+
+		// Continue a Markdown list across the break (`1. a⏎` → `2. `, `- a⏎` → `- `);
+		// breaking a completed empty item ends the list: its marker is stripped and
+		// the emptied item line collapses so no permanent empty item is left behind.
+		let continuation = this.#listContinuation ? listContinuation(before, after) : null;
+		// Not every marker-shaped line continues a list: a thematic break (`- - -`,
+		// `* * *`) is a rule rather than an item — inspect the whole line, the cursor
+		// may split it — and a marker inside a fenced code block is literal text.
+		if (
+			continuation &&
+			(THEMATIC_BREAK_RE.test(currentLine) || insideFencedCode(this.#state.lines, this.#state.cursorLine))
+		) {
+			continuation = null;
+		}
+		let prefix = "";
+		if (continuation) {
+			before = continuation.before;
+			prefix = continuation.prefix;
+		}
 
 		// Split current line
 		this.#state.lines[this.#state.cursorLine] = before;
-		this.#state.lines.splice(this.#state.cursorLine + 1, 0, after);
+		this.#state.lines.splice(this.#state.cursorLine + 1, 0, prefix + after);
 
-		// Move cursor to start of new line
-		this.#state.cursorLine++;
-		this.#setCursorCol(0);
+		if (continuation?.terminate) {
+			// The item line is now empty; drop it so the fresh line moves up into its place.
+			this.#state.lines.splice(this.#state.cursorLine, 1);
+		} else {
+			this.#state.cursorLine++;
+		}
+		this.#setCursorCol(prefix.length);
 
 		if (this.onChange) {
 			this.onChange(this.getText());

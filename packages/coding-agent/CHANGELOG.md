@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ## [18.1.14] - 2026-09-07
+### Added
+
+- New `tui.listContinuation` setting (Input group in `/settings`) toggles Markdown list continuation and preserves your choice across composer shape changes and editor replacement.
 
 ### Fixed
 

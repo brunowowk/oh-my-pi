@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ## [18.1.14] - 2026-09-07
+### Added
+
+- Markdown lists now continue on newline and end on empty items, preserving numbering and indentation while leaving fenced code and horizontal rules unchanged. Disable with `Editor.setListContinuation(false)`.
 
 ### Fixed
 
