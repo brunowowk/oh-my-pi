@@ -138,13 +138,14 @@ function insideFencedCode(lines: readonly string[], lineIndex: number): boolean 
 	let open: string | undefined; // marker character of the currently open fence
 	let openLength = 0;
 	let openFloor = 0;
-	let openQuote: string | undefined; // blockquote prefix of the opener, when quoted
+	let openQuoteDepth = 0; // blockquote depth of the opener's container prefix
 	for (let index = 0; index < lineIndex; index++) {
 		const line = lines[index] ?? "";
 		const match = FENCE_LINE_RE.exec(line);
 		if (match) {
 			const fence = match[5]!;
 			const quote = match[2];
+			const quoteDepth = (quote?.match(/>/g) ?? []).length;
 			const markered = match[3] !== undefined;
 			const indent = match[1]!.length + (quote?.length ?? 0) + (markered ? match[3]!.length + match[4]!.length : 0);
 			const info = match[6]!;
@@ -154,11 +155,11 @@ function insideFencedCode(lines: readonly string[], lineIndex: number): boolean 
 					open = fence[0];
 					openLength = fence.length;
 					openFloor = quote !== undefined || markered ? indent : indent > 3 ? 4 : 0;
-					openQuote = quote;
+					openQuoteDepth = quoteDepth;
 				}
 			} else if (
 				!markered &&
-				quote === openQuote &&
+				quoteDepth === openQuoteDepth &&
 				fence[0] === open &&
 				fence.length >= openLength &&
 				info.trim() === "" &&
@@ -173,25 +174,32 @@ function insideFencedCode(lines: readonly string[], lineIndex: number): boolean 
 					open = fence[0];
 					openLength = fence.length;
 					openFloor = 0;
-					openQuote = undefined;
+					openQuoteDepth = 0;
 				} else {
 					open = undefined;
 				}
 			}
 			continue;
 		}
-		const lineIndent = /^(?:[\t ]*>?[ \t]*)*/.exec(line)![0].length;
-		if (open !== undefined && line.trim() !== "" && lineIndent < openFloor) open = undefined;
+		// A line inside a quoted fence stays while its blockquote depth holds; an
+		// unquoted fence keeps every line whose container prefix reaches the floor.
+		const containerPrefix = /^(?:[\t ]*>?[ \t]*)*/.exec(line)![0];
+		const stays =
+			openQuoteDepth > 0
+				? (containerPrefix.match(/>/g) ?? []).length >= openQuoteDepth
+				: containerPrefix.length >= openFloor;
+		if (open !== undefined && line.trim() !== "" && !stays) open = undefined;
 	}
 	if (open !== undefined) {
 		// The cursor line can be the outdent that ends the context.
 		const current = lines[lineIndex] ?? "";
-		if (
-			!FENCE_LINE_RE.exec(current) &&
-			current.trim() !== "" &&
-			/^(?:[\t ]*>?[ \t]*)*/.exec(current)![0].length < openFloor
-		) {
-			return false;
+		if (!FENCE_LINE_RE.exec(current) && current.trim() !== "") {
+			const containerPrefix = /^(?:[\t ]*>?[ \t]*)*/.exec(current)![0];
+			const stays =
+				openQuoteDepth > 0
+					? (containerPrefix.match(/>/g) ?? []).length >= openQuoteDepth
+					: containerPrefix.length >= openFloor;
+			if (!stays) return false;
 		}
 	}
 	return open !== undefined;

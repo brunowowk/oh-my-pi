@@ -343,6 +343,22 @@ describe("Editor component", () => {
 			expect(editor.getText()).toBe("> ```\n> - literal\n");
 		});
 
+		it("keeps bullets literal after a no-space blockquote content line", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("> ```\n>code\n> - literal");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("> ```\n>code\n> - literal\n");
+		});
+
+		it("keeps wider-spaced quoted lines inside a quoted fence", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("> ```\n>  - literal");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("> ```\n>  - literal\n");
+		});
+
 		it("resumes continuation after a blockquoted fence closes", () => {
 			const editor = new Editor(defaultEditorTheme);
 			editor.setListContinuation(true);
