@@ -147,7 +147,7 @@ function enclosingListFloor(lines: readonly string[], fenceIndex: number, fenceI
 		const match = LIST_MARKER_RE.exec(line);
 		if (!match) break;
 		const contentIndent = match[0].length;
-		if (contentIndent <= fenceIndent) floor = contentIndent;
+		if (contentIndent <= fenceIndent) floor = Math.max(floor ?? 0, contentIndent);
 	}
 	return floor;
 }
@@ -164,8 +164,12 @@ function insideFencedCode(lines: readonly string[], lineIndex: number): boolean 
 			const fence = match[5]!;
 			const quote = match[2];
 			const quoteDepth = (quote?.match(/>/g) ?? []).length;
+			const quoteWidth = quote?.length ?? 0;
 			const markered = match[3] !== undefined;
-			const indent = match[1]!.length + (quote?.length ?? 0) + (markered ? match[3]!.length + match[4]!.length : 0);
+			const indent = match[1]!.length + quoteWidth + (markered ? match[3]!.length + match[4]!.length : 0);
+			// Column after the container prefix: quote-spacing style must not affect
+			// closer matching, so quoted fences compare relative columns.
+			const relative = indent - quoteWidth;
 			const info = match[6]!;
 			const opensFence = !(fence[0] === "`" && info.includes("`"));
 			if (open === undefined) {
@@ -174,7 +178,7 @@ function insideFencedCode(lines: readonly string[], lineIndex: number): boolean 
 					openLength = fence.length;
 					openFloor =
 						quote !== undefined || markered
-							? indent
+							? relative
 							: indent > 3
 								? 4
 								: (enclosingListFloor(lines, index, indent) ?? 0);
@@ -186,13 +190,13 @@ function insideFencedCode(lines: readonly string[], lineIndex: number): boolean 
 				fence[0] === open &&
 				fence.length >= openLength &&
 				info.trim() === "" &&
-				indent >= openFloor &&
-				indent - openFloor <= 3
+				relative >= openFloor &&
+				relative - openFloor <= 3
 			) {
 				open = undefined;
-			} else if (openFloor > 0 && indent < openFloor) {
-				// Outdent below the fence's floor ends that context; a fence-shaped
-				// line here opens a fresh top-level fence.
+			} else if (openQuoteDepth > 0 ? quoteDepth < openQuoteDepth : openFloor > 0 && indent < openFloor) {
+				// Outdent below the fence's floor (or its blockquote depth) ends that
+				// context; a fence-shaped line here opens a fresh top-level fence.
 				if (opensFence) {
 					open = fence[0];
 					openLength = fence.length;

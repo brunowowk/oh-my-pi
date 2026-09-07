@@ -367,6 +367,22 @@ describe("Editor component", () => {
 			expect(editor.getText()).toBe("- parent\n  ```\n- next\n- ");
 		});
 
+		it("retains the deepest enclosing list floor across a nested chain", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("- outer\n  - inner\n    ~~~\n  - next");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("- outer\n  - inner\n    ~~~\n  - next\n  - ");
+		});
+
+		it("closes a wide-spaced quoted fence with a tighter quoted closer", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText(">   ~~~\n> ~~~\n> - item");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe(">   ~~~\n> ~~~\n> - item\n> - ");
+		});
+
 		it("resumes continuation after a blockquoted fence closes", () => {
 			const editor = new Editor(defaultEditorTheme);
 			editor.setListContinuation(true);
