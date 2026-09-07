@@ -870,7 +870,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			spellingTypoDetection: settings.get("spelling.typoDetection"),
 			spellingAutocomplete: settings.get("spelling.autocomplete"),
 			spellingAutocorrect: settings.get("spelling.autocorrect"),
-			listContinuation: settings.get("tui.listContinuation"),
+			listContinuation: this.settings.get("tui.listContinuation"),
 		};
 		const wasStarted = composer?.started ?? false;
 		this.composer =

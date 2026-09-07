@@ -261,6 +261,22 @@ describe("Editor component", () => {
 			expect(editor.getText()).toBe("```\n- ```\n- literal\n");
 		});
 
+		it("does not carry an indented fence token across an outdent", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("    ```\n- item");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("    ```\n- item\n- ");
+		});
+
+		it("keeps a list literal under a top-level fence opened on an outdent", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("    ```\n```js\n- item");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("    ```\n```js\n- item\n");
+		});
+
 		it("continues a list after backticks that cannot open a code fence", () => {
 			const editor = new Editor(defaultEditorTheme);
 			editor.setListContinuation(true);

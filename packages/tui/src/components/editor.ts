@@ -109,12 +109,19 @@ const THEMATIC_BREAK_RE = /^ {0,3}([-*_])[ \t]*(?:\1[ \t]*){2,}$/;
 
 /**
  * Whether the line at `lineIndex` sits inside an open fenced code block: walk the lines
- * above it, tracking the open fence's marker character, length, and indentation (a fence
- * opening after a list marker sits at the list content indent). A line closes the fence
- * only when it is a bare fence — no list marker — using the same character, at least as
- * long, with no info string, and within three columns of the opener's indent; a fence
+ * above it, tracking the open fence's marker character, length, and floor — the minimum
+ * indentation that stays inside. A fence opened after a list marker floors at its list
+ * content indent, an indented fence token floors at the top-level code bound (four), and
+ * a top-level fence floors at zero (nothing ends it but its closer). A line closes the
+ * fence only when it is a bare fence — no list marker — using the same character, at
+ * least as long, with no info string, and within three columns of the floor; a fence
  * nested under a list item closes within its list context, and a shallower fence-shaped
  * line stays literal.
+ *
+ * A non-blank line above the floor ends list-content and indented-code fence state, and
+ * the cursor line's own outdent counts too — so an indented fence token does not swallow
+ * a following outdented list. A fence-shaped line on such an outdent opens a fresh
+ * top-level fence instead.
  *
  * Fence-shape at any indent is treated as code state: a backtick line indented past the
  * top-level fence bound is either a fence nested under a list item or an indented code
@@ -126,25 +133,51 @@ const THEMATIC_BREAK_RE = /^ {0,3}([-*_])[ \t]*(?:\1[ \t]*){2,}$/;
 function insideFencedCode(lines: readonly string[], lineIndex: number): boolean {
 	let open: string | undefined; // marker character of the currently open fence
 	let openLength = 0;
-	let openIndent = 0;
+	let openFloor = 0;
 	for (let index = 0; index < lineIndex; index++) {
-		const match = FENCE_LINE_RE.exec(lines[index] ?? "");
-		if (!match) continue;
-		const fence = match[4]!;
-		const indent = match[1]!.length + (match[2] !== undefined ? match[2]!.length + match[3]!.length : 0);
-		if (open === undefined) {
-			if (fence[0] === "`" && match[5]!.includes("`")) continue;
-			open = fence[0];
-			openLength = fence.length;
-			openIndent = indent;
-		} else if (
-			match[2] === undefined &&
-			fence[0] === open &&
-			fence.length >= openLength &&
-			match[5]!.trim() === "" &&
-			Math.abs(indent - openIndent) <= 3
-		) {
-			open = undefined;
+		const line = lines[index] ?? "";
+		const match = FENCE_LINE_RE.exec(line);
+		if (match) {
+			const fence = match[4]!;
+			const markered = match[2] !== undefined;
+			const indent = match[1]!.length + (markered ? match[2]!.length + match[3]!.length : 0);
+			const info = match[5]!;
+			const opensFence = !(fence[0] === "`" && info.includes("`"));
+			if (open === undefined) {
+				if (opensFence) {
+					open = fence[0];
+					openLength = fence.length;
+					openFloor = markered ? indent : indent > 3 ? 4 : 0;
+				}
+			} else if (
+				!markered &&
+				fence[0] === open &&
+				fence.length >= openLength &&
+				info.trim() === "" &&
+				Math.abs(indent - openFloor) <= 3
+			) {
+				open = undefined;
+			} else if (openFloor > 0 && indent < openFloor) {
+				// Outdent below the fence's floor ends that context; a fence-shaped
+				// line here opens a fresh top-level fence.
+				if (opensFence) {
+					open = fence[0];
+					openLength = fence.length;
+					openFloor = 0;
+				} else {
+					open = undefined;
+				}
+			}
+			continue;
+		}
+		const lineIndent = /^[\t ]*/.exec(line)![0].length;
+		if (open !== undefined && line.trim() !== "" && lineIndent < openFloor) open = undefined;
+	}
+	if (open !== undefined) {
+		// The cursor line can be the outdent that ends the context.
+		const current = lines[lineIndex] ?? "";
+		if (!FENCE_LINE_RE.exec(current) && current.trim() !== "" && /^[\t ]*/.exec(current)![0].length < openFloor) {
+			return false;
 		}
 	}
 	return open !== undefined;

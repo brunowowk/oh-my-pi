@@ -457,6 +457,45 @@ describe("Composer prepaint", () => {
 		}
 	});
 
+	it("initializes list continuation from the session settings, not the global", async () => {
+		const terminal = new CountingTerminal(80, 24);
+		// Startup preferences are built from the global instance (default on); the
+		// session isolates the same setting off and must win at adoption.
+		const composer = new Composer({ preferences: { ...config, listContinuation: true }, terminal });
+		composer.start();
+		const lease = new ComposerLease(composer);
+		const testSession = await createTestSession({
+			inMemory: true,
+			settingsOverrides: { "tui.listContinuation": false },
+		});
+		const mode = new InteractiveMode(
+			testSession.session,
+			"test",
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			lease.composer,
+		);
+		lease.adopt();
+
+		try {
+			vi.spyOn(mode.statusLine, "watchBranch").mockImplementation(() => {});
+			vi.spyOn(testSession.session, "maybeStartTitleGeneration").mockImplementation(() => {});
+			await mode.init({ suppressWelcomeIntro: true });
+
+			terminal.sendInput("- item");
+			terminal.sendInput("\n");
+			expect(mode.editor.getExpandedText()).toBe("- item\n");
+		} finally {
+			mode.stop();
+			lease.dispose();
+			await testSession.cleanup();
+			vi.restoreAllMocks();
+		}
+	});
+
 	it("renders the complete interactive welcome scene on the first frame", async () => {
 		const terminal = new CountingTerminal(80, 32);
 		const composer = new Composer({
