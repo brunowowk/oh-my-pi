@@ -277,6 +277,22 @@ describe("Editor component", () => {
 			expect(editor.getText()).toBe("    ```\n```js\n- item\n");
 		});
 
+		it("treats an outdented fence line as a new top-level fence, not a closer", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("- ```\n```\n- literal");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("- ```\n```\n- literal\n");
+		});
+
+		it("appends a plain newline after a thematic break nested under a list item", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("- parent\n    * * *");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("- parent\n    * * *\n");
+		});
+
 		it("continues a list after backticks that cannot open a code fence", () => {
 			const editor = new Editor(defaultEditorTheme);
 			editor.setListContinuation(true);

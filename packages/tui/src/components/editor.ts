@@ -103,9 +103,10 @@ function listContinuation(before: string, after: string): ListContinuation | nul
  *  or tildes; the capture after the fence is the (possibly empty) info string. */
 const FENCE_LINE_RE = /^([\t ]*)(?:([-*+]|\d{1,9}[.)])([\t ]*))?(`{3,}|~{3,})(.*)$/;
 
-/** A thematic break: up to 3 spaces of indent, then 3+ of one marker character
- *  (`-`, `*` or `_`), each optionally separated by spaces or tabs. */
-const THEMATIC_BREAK_RE = /^ {0,3}([-*_])[ \t]*(?:\1[ \t]*){2,}$/;
+/** A thematic break at any indentation: 3+ of one marker character (`-`, `*` or `_`),
+ *  each optionally separated by spaces or tabs. Indentation beyond the top-level bound is
+ *  either the containing list's indent or indented code — neither continues a list. */
+const THEMATIC_BREAK_RE = /^[\t ]*([-*_])[ \t]*(?:\1[ \t]*){2,}$/;
 
 /**
  * Whether the line at `lineIndex` sits inside an open fenced code block: walk the lines
@@ -113,10 +114,10 @@ const THEMATIC_BREAK_RE = /^ {0,3}([-*_])[ \t]*(?:\1[ \t]*){2,}$/;
  * indentation that stays inside. A fence opened after a list marker floors at its list
  * content indent, an indented fence token floors at the top-level code bound (four), and
  * a top-level fence floors at zero (nothing ends it but its closer). A line closes the
- * fence only when it is a bare fence — no list marker — using the same character, at
- * least as long, with no info string, and within three columns of the floor; a fence
- * nested under a list item closes within its list context, and a shallower fence-shaped
- * line stays literal.
+ * only when it is a bare fence — no list marker — using the same character, at least as
+ * long, with no info string, indented at or above the floor, and within three columns of
+ * it; a fence nested under a list item closes within its list context, and a shallower
+ * fence-shaped line stays literal (or opens a fresh top-level fence on an outdent).
  *
  * A non-blank line above the floor ends list-content and indented-code fence state, and
  * the cursor line's own outdent counts too — so an indented fence token does not swallow
@@ -154,7 +155,8 @@ function insideFencedCode(lines: readonly string[], lineIndex: number): boolean 
 				fence[0] === open &&
 				fence.length >= openLength &&
 				info.trim() === "" &&
-				Math.abs(indent - openFloor) <= 3
+				indent >= openFloor &&
+				indent - openFloor <= 3
 			) {
 				open = undefined;
 			} else if (openFloor > 0 && indent < openFloor) {
