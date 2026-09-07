@@ -573,7 +573,7 @@ export class SelectorController {
 				this.ctx.ui.requestRender();
 				break;
 			case "tui.listContinuation":
-				this.ctx.syncEditorListContinuation();
+				this.ctx.applyEditorListContinuation(value === true);
 				break;
 
 			// Settings with UI side effects

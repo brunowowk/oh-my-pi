@@ -301,6 +301,40 @@ describe("Editor component", () => {
 			expect(editor.getText()).toBe("```not `an info string`\n- item\n- ");
 		});
 
+		it("continues a blockquoted bullet with the container prefix", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("> - item");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("> - item\n> - ");
+		});
+
+		it("increments a blockquoted ordered list after its container prefix", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("> 1. item");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("> 1. item\n> 2. ");
+		});
+
+		it("collapses an empty blockquoted item onto its container prefix", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("> - ");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("> \n");
+			expect(editor.debugState().cursorLine).toBe(0);
+			expect(editor.debugState().cursorCol).toBe(2);
+		});
+
+		it("continues a list nested inside two blockquote levels", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("> > 1. item");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("> > 1. item\n> > 2. ");
+		});
+
 		it("stays inside a fence whose closing marker is shorter than the opener", () => {
 			const editor = new Editor(defaultEditorTheme);
 			editor.setListContinuation(true);

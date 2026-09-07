@@ -2130,10 +2130,11 @@ export class InteractiveMode implements InteractiveModeContext {
 		});
 	}
 
-	syncEditorListContinuation(): void {
-		// Session-scoped on purpose: the settings selector persists toggles through
-		// ctx.settings, so this must read the same instance, not the module global.
-		this.composer.setPreferences({ listContinuation: this.settings.get("tui.listContinuation") });
+	applyEditorListContinuation(value: boolean): void {
+		// Apply the callback value directly: the /settings selector persists through
+		// the module-global settings instance, which an isolated session's this.settings
+		// cannot see — re-reading it here would drop the user's toggle.
+		this.composer.setPreferences({ listContinuation: value });
 	}
 
 	#syncStatusLineSettings(): void {

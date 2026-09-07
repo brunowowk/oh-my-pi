@@ -59,9 +59,9 @@ function sanitizeLoadedText(text: string): string {
 	return replaceTabs(text.replace(/\r\n?/g, "\n")).replace(/[\x00-\x09\x0b-\x1f]/g, "");
 }
 
-/** A Markdown list marker opening a line: optional indent, then `1.`/`1)` or `-`/`*`/`+`,
- *  then optional whitespace. */
-const LIST_MARKER_RE = /^([ \t]*)(?:(\d{1,9})([.)])|([-*+]))([ \t]*)/;
+/** A Markdown list marker opening a line: an optional blockquote container prefix
+ *  (`> `, `> > `) and/or indent, then `1.`/`1)` or `-`/`*`/`+`, then optional whitespace. */
+const LIST_MARKER_RE = /^((?:[\t ]*>?[ \t]*)*)(?:(\d{1,9})([.)])|([-*+]))([\t ]*)/;
 
 interface ListContinuation {
 	/** Replacement for the text before the cursor on the broken line. */
@@ -69,33 +69,33 @@ interface ListContinuation {
 	/** Prefix for the new line. */
 	prefix: string;
 	/** True when a completed empty item is being terminated: the marker is stripped
-	 *  and the emptied line collapses so the list simply ends. */
+	 *  and the emptied line collapses (a quoted line keeps its container prefix). */
 	terminate: boolean;
 }
 
 /**
  * Continuation for a Markdown list item split by a newline: `1. a` → `2. `,
- * `- a` → `- `, preserving indentation and the delimiter. A completed empty
- * item (`1. `, nothing else on the line) terminates the list instead — the
- * marker is stripped and the emptied item vanishes rather than spawning a
- * permanent empty item.
+ * `- a` → `- `, `> - a` → `> - `, preserving the container prefix, indentation, and
+ * delimiter. A completed empty item (`1. `, `> - `, nothing else on the line)
+ * terminates the list instead — the marker is stripped and the emptied item vanishes
+ * (or collapses onto its quote prefix) rather than spawning a permanent empty item.
  *
  * Returns null when the text before the cursor does not open a list item.
  */
 function listContinuation(before: string, after: string): ListContinuation | null {
 	const match = LIST_MARKER_RE.exec(before);
 	if (!match) return null;
-	const [, indent, num, delim, bullet, ws] = match;
-	// A marker without trailing whitespace is not a list (`1.a`); only a bare
+	const [, container, num, delim, bullet, ws] = match;
+	// A marker without trailing whitespace is not a list (`1.a`, `>-a`); only a bare
 	// marker ending exactly at the cursor (`1.` as the whole input) continues.
 	if (ws === "" && (after !== "" || match[0].length !== before.length)) return null;
 	if (ws !== "" && after === "" && match[0].length === before.length) {
-		return { before: "", prefix: "", terminate: true };
+		return { before: container, prefix: "", terminate: true };
 	}
 	if (num !== undefined) {
-		return { before, prefix: `${indent}${Number(num) + 1}${delim}${ws || " "}`, terminate: false };
+		return { before, prefix: `${container}${Number(num) + 1}${delim}${ws || " "}`, terminate: false };
 	}
-	return { before, prefix: `${indent}${bullet}${ws || " "}`, terminate: false };
+	return { before, prefix: `${container}${bullet}${ws || " "}`, terminate: false };
 }
 
 /** A fenced code block delimiter line: any indent (fences nest inside list items), an
@@ -103,10 +103,11 @@ function listContinuation(before: string, after: string): ListContinuation | nul
  *  or tildes; the capture after the fence is the (possibly empty) info string. */
 const FENCE_LINE_RE = /^([\t ]*)(?:([-*+]|\d{1,9}[.)])([\t ]*))?(`{3,}|~{3,})(.*)$/;
 
-/** A thematic break at any indentation: 3+ of one marker character (`-`, `*` or `_`),
- *  each optionally separated by spaces or tabs. Indentation beyond the top-level bound is
- *  either the containing list's indent or indented code — neither continues a list. */
-const THEMATIC_BREAK_RE = /^[\t ]*([-*_])[ \t]*(?:\1[ \t]*){2,}$/;
+/** A thematic break at any container prefix (indent, blockquote, or both): 3+ of one
+ *  marker character (`-`, `*` or `_`), each optionally separated by spaces or tabs.
+ *  Indentation beyond the top-level bound is either the containing list's indent or
+ *  indented code — neither continues a list. */
+const THEMATIC_BREAK_RE = /^(?:(?:[\t ]*>?[ \t]*)*)([-*_])[ \t]*(?:\1[ \t]*){2,}$/;
 
 /**
  * Whether the line at `lineIndex` sits inside an open fenced code block: walk the lines
@@ -2577,12 +2578,19 @@ export class Editor implements Component, Focusable {
 		this.#state.lines.splice(this.#state.cursorLine + 1, 0, prefix + after);
 
 		if (continuation?.terminate) {
-			// The item line is now empty; drop it so the fresh line moves up into its place.
-			this.#state.lines.splice(this.#state.cursorLine, 1);
+			// The marker-stripped item line collapses: fully when only the marker was
+			// removed, otherwise (a quoted line) keeping its container prefix with the
+			// cursor resting after it.
+			if (before === "") {
+				this.#state.lines.splice(this.#state.cursorLine, 1);
+				this.#setCursorCol(0);
+			} else {
+				this.#setCursorCol(before.length);
+			}
 		} else {
 			this.#state.cursorLine++;
+			this.#setCursorCol(prefix.length);
 		}
-		this.#setCursorCol(prefix.length);
 
 		if (this.onChange) {
 			this.onChange(this.getText());
