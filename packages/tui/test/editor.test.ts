@@ -237,6 +237,30 @@ describe("Editor component", () => {
 			expect(editor.getText()).toBe("1. item\n    ```\n    - literal\n```\n    - still literal\n");
 		});
 
+		it("keeps bullets literal inside a fence opened directly after a list marker", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("- ```\n  - literal");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("- ```\n  - literal\n");
+		});
+
+		it("resumes continuation after a marker-opened fence closes", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("- ```\n  - literal\n  ```\n  - item");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("- ```\n  - literal\n  ```\n  - item\n  - ");
+		});
+
+		it("stays literal when a marker-prefixed fence-shaped line appears inside a fence", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("```\n- ```\n- literal");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("```\n- ```\n- literal\n");
+		});
+
 		it("continues a list after backticks that cannot open a code fence", () => {
 			const editor = new Editor(defaultEditorTheme);
 			editor.setListContinuation(true);
