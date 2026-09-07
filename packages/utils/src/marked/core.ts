@@ -706,7 +706,8 @@ function splitTableRow(line: string): string[] {
 }
 
 function isFence(line: string): RegExpExecArray | null {
-	return /^ {0,3}(`{3,}|~{3,})(.*?)(?:\n|$)$/.exec(line);
+	const match = /^ {0,3}(`{3,}|~{3,})(.*?)(?:\n|$)$/.exec(line);
+	return match?.[1]?.[0] === "`" && match[2]!.includes("`") ? null : match;
 }
 function isHeading(line: string): boolean {
 	return /^ {0,3}#{1,6}(?:\s|$)/.test(line);
@@ -903,7 +904,7 @@ function blockTokens(src: string, lexer: Lexer, output: Token[]): Token[] {
 	const lines = lineArray(src);
 	let i = 0;
 	while (i < lines.length) {
-		const remaining = lines.slice(i).join("");
+		const remaining = lexer.extensions.block.length > 0 ? lines.slice(i).join("") : "";
 		let custom: Tokens.Generic | undefined;
 		for (const extension of lexer.extensions.block) {
 			custom = extension.tokenizer.call({ lexer }, remaining, output);
@@ -1060,7 +1061,7 @@ function blockTokens(src: string, lexer: Lexer, output: Token[]): Token[] {
 		if (i + 1 < lines.length && /^ {0,3}(=+|-+)[ \t]*(?:\n|$)$/.test(lines[i + 1]!)) {
 			let fallback: Tokens.Heading | undefined | false;
 			const override = lexer.tokenizerOverrides.lheading;
-			if (override) fallback = override.call(lexer.tokenizer, remaining);
+			if (override) fallback = override.call(lexer.tokenizer, remaining || lines.slice(i).join(""));
 			if (!override || fallback === false) {
 				const raw = line + lines[i + 1]!;
 				const text = stripFinalNewline(line);

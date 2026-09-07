@@ -464,6 +464,114 @@ describe("Editor component", () => {
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText()).toBe("- parent\n    - deep\n    - ");
 		});
+		it("appends a plain newline after a top-level indented-code bullet literal", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("    - literal"); // 4 spaces: indented code block, not a list item
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("    - literal\n");
+		});
+
+		it("appends a plain newline after a top-level indented-code empty item", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("    - ");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("    - \n");
+		});
+
+		it("appends a plain newline after a blockquoted indented-code bullet literal", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText(">     - literal"); // 4 spaces past the quote marker: indented code
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe(">     - literal\n");
+		});
+
+		it("continues a deep nested list inside a blockquote", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("> - parent\n>   - deep");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("> - parent\n>   - deep\n>   - ");
+			expect(editor.debugState().cursorCol).toBe(6);
+		});
+
+		it("exits a quoted fence opened on a marker line when a sibling item appears", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("> - ```\n>   code\n> - next");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("> - ```\n>   code\n> - next\n> - ");
+			expect(editor.debugState().cursorCol).toBe(4);
+		});
+
+		it("exits a quoted fence opened on a separate line when a sibling item appears", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("> - parent\n>   ```\n>   code\n> - next");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("> - parent\n>   ```\n>   code\n> - next\n> - ");
+			expect(editor.debugState().cursorCol).toBe(4);
+		});
+
+		it("preserves the nested list floor across intervening prose", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("- outer\n  - inner\n\n    prose\n  - next");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("- outer\n  - inner\n\n    prose\n  - next\n  - ");
+			expect(editor.debugState().cursorCol).toBe(4);
+		});
+
+		it("preserves the nested list floor across a blank line", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("- outer\n  - inner\n\n  - next");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("- outer\n  - inner\n\n  - next\n  - ");
+			expect(editor.debugState().cursorCol).toBe(4);
+		});
+
+		it("keeps deeply indented paragraph continuation literal", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("- parent\n      - deep");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("- parent\n      - deep\n");
+		});
+
+		it("keeps a blank line from ending a list-contained code fence", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("- parent\n  ```\n\n  - literal");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("- parent\n  ```\n\n  - literal\n");
+		});
+
+		it("does not open a fence from indented code inside a quote", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText(">     ```\n> - item");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe(">     ```\n> - item\n> - ");
+		});
+
+		it("continues a deeply nested sibling after it exits a code fence", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("- outer\n  - inner\n    - deepest\n      ```\n    - next");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("- outer\n  - inner\n    - deepest\n      ```\n    - next\n    - ");
+		});
+
+		it("does not count a quote marker as indentation within a list fence", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("- parent\n  ```\n> - item");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("- parent\n  ```\n> - item\n> - ");
+		});
 	});
 
 	describe("Prompt history navigation", () => {

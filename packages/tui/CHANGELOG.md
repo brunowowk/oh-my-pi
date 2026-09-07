@@ -4,7 +4,7 @@
 
 ### Added
 
-- Markdown lists now continue on newline and end on empty items, preserving numbering and indentation while leaving fenced code and horizontal rules unchanged. Prompt behavior follows the `tui.listContinuation` setting (default on); the `Editor` component itself defaults off and hosts opt in with `setListContinuation(true)`.
+- Markdown lists now continue on newline and end on empty items, preserving numbering, indentation, and blockquote prefixes while leaving fenced/indented code and horizontal rules unchanged. Prompt behavior follows the `tui.listContinuation` setting (default on); the `Editor` component itself defaults off and hosts opt in with `setListContinuation(true)`.
 
 ## [18.1.14] - 2026-09-07
 ### Fixed

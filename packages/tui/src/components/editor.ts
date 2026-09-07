@@ -1,4 +1,5 @@
 import { getProjectDir, logger } from "@oh-my-pi/pi-utils";
+import { Lexer, type Token, type Tokens } from "@oh-my-pi/pi-utils/marked";
 import {
 	type AutocompleteItem,
 	type AutocompleteProvider,
@@ -59,9 +60,12 @@ function sanitizeLoadedText(text: string): string {
 	return replaceTabs(text.replace(/\r\n?/g, "\n")).replace(/[\x00-\x09\x0b-\x1f]/g, "");
 }
 
-/** A Markdown list marker opening a line: an optional blockquote container prefix
- *  (`> `, `> > `) and/or indent, then `1.`/`1)` or `-`/`*`/`+`, then optional whitespace. */
-const LIST_MARKER_RE = /^((?:[\t ]*>?[ \t]*)*)(?:(\d{1,9})([.)])|([-*+]))([\t ]*)/;
+/** A Markdown list marker at the start of a quote-stripped line: optional indent,
+ *  then `1.`/`1)` or `-`/`*`/`+`, then the separating whitespace. Every quantifier
+ *  is single-star and anchored, so matching is linear — no nested-whitespace
+ *  backtracking. An empty `ws` means the marker is glued to its text (`1.a`, `-x`):
+ *  a paragraph, not a list. */
+const LIST_MARKER_RE = /^([\t ]*)(?:(\d{1,9})([.)])|([-*+]))([\t ]*)/;
 
 interface ListContinuation {
 	/** Replacement for the text before the cursor on the broken line. */
@@ -83,13 +87,16 @@ interface ListContinuation {
  * Returns null when the text before the cursor does not open a list item.
  */
 function listContinuation(before: string, after: string): ListContinuation | null {
-	const match = LIST_MARKER_RE.exec(before);
+	const markerStart = listContentOffset(before);
+	const match = LIST_MARKER_RE.exec(before.slice(markerStart));
 	if (!match) return null;
-	const [, container, num, delim, bullet, ws] = match;
+	const container = `${before.slice(0, markerStart)}${match[1]}`;
+	const [, , num, delim, bullet, ws] = match;
+	const markerEnd = markerStart + match[0].length;
 	// A marker without trailing whitespace is not a list (`1.a`, `>-a`); only a bare
 	// marker ending exactly at the cursor (`1.` as the whole input) continues.
-	if (ws === "" && (after !== "" || match[0].length !== before.length)) return null;
-	if (ws !== "" && after === "" && match[0].length === before.length) {
+	if (ws === "" && (after !== "" || markerEnd !== before.length)) return null;
+	if (ws !== "" && after === "" && markerEnd === before.length) {
 		return { before: container, prefix: "", terminate: true };
 	}
 	if (num !== undefined) {
@@ -98,138 +105,41 @@ function listContinuation(before: string, after: string): ListContinuation | nul
 	return { before, prefix: `${container}${bullet}${ws || " "}`, terminate: false };
 }
 
-/** A fenced code block delimiter line: a container prefix — blockquote (`> `) and/or
- *  indent, or a list marker the fence may open directly after, which requires separating
- *  whitespace between marker and fence — then 3+ backticks or tildes; the capture after
- *  the fence is the (possibly empty) info string. */
-const FENCE_LINE_RE = /^([\t ]*)((?:>[ \t]*)+[\t ]*)?(?:([-*+]|\d{1,9}[.)])([\t ]+))?(`{3,}|~{3,})(.*)$/;
-
-/** A thematic break at any container prefix (indent, blockquote, or both): 3+ of one
- *  marker character (`-`, `*` or `_`), each optionally separated by spaces or tabs.
- *  Indentation beyond the top-level bound is either the containing list's indent or
- *  indented code — neither continues a list. */
-const THEMATIC_BREAK_RE = /^(?:(?:[\t ]*>?[ \t]*)*)([-*_])[ \t]*(?:\1[ \t]*){2,}$/;
-/**
- * Whether the line at `lineIndex` sits inside an open fenced code block: walk the lines
- * above it, tracking the open fence's marker character, length, floor, and container —
- * the floor is the minimum container-indent that stays inside (list content indent for
- * marker-opened fences and for bare fences inside a preceding list item's content, the
- * top-level code bound of four for indented fence tokens, the quoted fence's own column,
- * or zero for a top-level fence, which only its closer ends). A line closes the fence
- * only when it is bare — no list marker — uses the same character and container, is at
- * least as long, has no info string, and sits at or above the floor within three columns;
- * a shallower fence-shaped line stays literal.
- *
- * A non-blank line below the floor ends list-content, quoted, and indented-code fence
- * state, and the cursor line's own outdent counts too — so an indented, quoted, or
- * list-nested fence token does not swallow a following outdented list. A fence-shaped
- * line on such an outdent opens a fresh top-level fence instead.
- *
- * Fence-shape at any container is treated as code state: a backtick line indented past
- * the top-level fence bound is either a fence nested under a list item or an indented
- * code block, and both should keep list continuation out of their literal content.
- * Indented prose is not tracked separately — list indentation and indented code are
- * indistinguishable without full list-context parsing, and misclassifying nested-list
- * indentation would break list continuation.
- */
-
-/**
- * Content indent of the enclosing list item for a bare fence opener at `fenceIndex`:
- * walk back over the directly preceding list-item chain (blanks skipped, any other
- * non-blank line stops it) and take the deepest item whose content indent the fence
- * reaches. Null when no list context applies.
- */
-function enclosingListFloor(lines: readonly string[], fenceIndex: number, fenceIndent: number): number | null {
-	let floor: number | null = null;
-	for (let index = fenceIndex - 1; index >= 0; index--) {
-		const line = lines[index] ?? "";
-		if (line.trim() === "") continue;
-		const match = LIST_MARKER_RE.exec(line);
-		if (!match) break;
-		const contentIndent = match[0].length;
-		if (contentIndent <= fenceIndent) floor = Math.max(floor ?? 0, contentIndent);
+/** Skip quote markers without ambiguous, nested-whitespace regex backtracking. */
+function listContentOffset(line: string): number {
+	let offset = 0;
+	for (;;) {
+		let next = offset;
+		while (line[next] === " " || line[next] === "\t") next++;
+		if (line[next] !== ">") return offset;
+		offset = next + 1;
+		if (line[offset] === " " || line[offset] === "\t") offset++;
 	}
-	return floor;
 }
 
-function insideFencedCode(lines: readonly string[], lineIndex: number): boolean {
-	let open: string | undefined; // marker character of the currently open fence
-	let openLength = 0;
-	let openFloor = 0;
-	let openQuoteDepth = 0; // blockquote depth of the opener's container prefix
-	for (let index = 0; index < lineIndex; index++) {
-		const line = lines[index] ?? "";
-		const match = FENCE_LINE_RE.exec(line);
-		if (match) {
-			const fence = match[5]!;
-			const quote = match[2];
-			const quoteDepth = (quote?.match(/>/g) ?? []).length;
-			const quoteWidth = quote?.length ?? 0;
-			const markered = match[3] !== undefined;
-			const indent = match[1]!.length + quoteWidth + (markered ? match[3]!.length + match[4]!.length : 0);
-			// Column after the container prefix: quote-spacing style must not affect
-			// closer matching, so quoted fences compare relative columns.
-			const relative = indent - quoteWidth;
-			const info = match[6]!;
-			const opensFence = !(fence[0] === "`" && info.includes("`"));
-			if (open === undefined) {
-				if (opensFence) {
-					open = fence[0];
-					openLength = fence.length;
-					openFloor =
-						quote !== undefined || markered
-							? relative
-							: indent > 3
-								? 4
-								: (enclosingListFloor(lines, index, indent) ?? 0);
-					openQuoteDepth = quoteDepth;
-				}
-			} else if (
-				!markered &&
-				quoteDepth === openQuoteDepth &&
-				fence[0] === open &&
-				fence.length >= openLength &&
-				info.trim() === "" &&
-				relative >= openFloor &&
-				relative - openFloor <= 3
-			) {
-				open = undefined;
-			} else if (openQuoteDepth > 0 ? quoteDepth < openQuoteDepth : openFloor > 0 && indent < openFloor) {
-				// Outdent below the fence's floor (or its blockquote depth) ends that
-				// context; a fence-shaped line here opens a fresh top-level fence.
-				if (opensFence) {
-					open = fence[0];
-					openLength = fence.length;
-					openFloor = 0;
-					openQuoteDepth = 0;
-				} else {
-					open = undefined;
-				}
-			}
+/**
+ * The cursor line must start a real list item, not merely resemble one inside
+ * code, a rule, or paragraph content. Use the shared block grammar so container
+ * exits and indentation agree with Markdown rendering; inline tokens are only
+ * queued by blockTokens, not parsed.
+ */
+function continuesList(lines: readonly string[], lineIndex: number): boolean {
+	const source = (lineIndex === lines.length - 1 ? lines : lines.slice(0, lineIndex + 1)).join("\n");
+	let tokens: Token[] = new Lexer().blockTokens(source);
+	for (;;) {
+		const last = tokens.at(-1);
+		if (last?.type === "blockquote") {
+			tokens = (last as Tokens.Blockquote).tokens;
 			continue;
 		}
-		// A line inside a quoted fence stays while its blockquote depth holds; an
-		// unquoted fence keeps every line whose container prefix reaches the floor.
-		const containerPrefix = /^(?:[\t ]*>?[ \t]*)*/.exec(line)![0];
-		const stays =
-			openQuoteDepth > 0
-				? (containerPrefix.match(/>/g) ?? []).length >= openQuoteDepth
-				: containerPrefix.length >= openFloor;
-		if (open !== undefined && line.trim() !== "" && !stays) open = undefined;
+		if (last?.type !== "list") return false;
+		const item = (last as Tokens.List).items.at(-1);
+		if (!item) return false;
+		// With no later line in this item, the cursor is on its opening marker.
+		// Otherwise only a nested list/quote can establish another list marker.
+		if (!item.raw.includes("\n")) return true;
+		tokens = item.tokens;
 	}
-	if (open !== undefined) {
-		// The cursor line can be the outdent that ends the context.
-		const current = lines[lineIndex] ?? "";
-		if (!FENCE_LINE_RE.exec(current) && current.trim() !== "") {
-			const containerPrefix = /^(?:[\t ]*>?[ \t]*)*/.exec(current)![0];
-			const stays =
-				openQuoteDepth > 0
-					? (containerPrefix.match(/>/g) ?? []).length >= openQuoteDepth
-					: containerPrefix.length >= openFloor;
-			if (!stays) return false;
-		}
-	}
-	return open !== undefined;
 }
 
 const segmenter = getSegmenter();
@@ -2606,11 +2516,9 @@ export class Editor implements Component, Focusable {
 		let continuation = this.#listContinuation ? listContinuation(before, after) : null;
 		// Not every marker-shaped line continues a list: a thematic break (`- - -`,
 		// `* * *`) is a rule rather than an item — inspect the whole line, the cursor
-		// may split it — and a marker inside a fenced code block is literal text.
-		if (
-			continuation &&
-			(THEMATIC_BREAK_RE.test(currentLine) || insideFencedCode(this.#state.lines, this.#state.cursorLine))
-		) {
+		// may split it — and a marker inside a fenced or indented code block is
+		// literal text.
+		if (continuation !== null && !continuesList(this.#state.lines, this.#state.cursorLine)) {
 			continuation = null;
 		}
 		let prefix = "";

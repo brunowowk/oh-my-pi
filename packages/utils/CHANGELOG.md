@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Markdown no longer treats backtick fences with backticks in their info strings as code blocks.
+- Large Markdown documents tokenize faster when no block extensions need the remaining source.
+
 ## [18.1.13] - 2026-09-07
 
 ### Fixed
