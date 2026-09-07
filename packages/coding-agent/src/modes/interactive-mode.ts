@@ -2131,7 +2131,9 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	syncEditorListContinuation(): void {
-		this.composer.setPreferences({ listContinuation: settings.get("tui.listContinuation") });
+		// Session-scoped on purpose: the settings selector persists toggles through
+		// ctx.settings, so this must read the same instance, not the module global.
+		this.composer.setPreferences({ listContinuation: this.settings.get("tui.listContinuation") });
 	}
 
 	#syncStatusLineSettings(): void {

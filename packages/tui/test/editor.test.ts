@@ -97,6 +97,7 @@ describe("Editor component", () => {
 	describe("Markdown list continuation", () => {
 		it("continues a numbered list with the next number on Shift+Enter", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("1. first item");
 			editor.handleInput("\x1b[13;2~"); // Shift+Enter (legacy CSI)
 			expect(editor.getText()).toBe("1. first item\n2. ");
@@ -105,6 +106,7 @@ describe("Editor component", () => {
 
 		it("continues numbering from the typed start", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("16. item");
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText()).toBe("16. item\n17. ");
@@ -112,6 +114,7 @@ describe("Editor component", () => {
 
 		it("keeps the ordered-list delimiter and indentation", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("  1) nested");
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText()).toBe("  1) nested\n  2) ");
@@ -119,6 +122,7 @@ describe("Editor component", () => {
 
 		it("continues bullet lists with the same bullet and indentation", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("  - nested");
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText()).toBe("  - nested\n  - ");
@@ -126,6 +130,7 @@ describe("Editor component", () => {
 
 		it("splits mid-item content after the marker", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("1. ab");
 			editor.handleInput("\x1b[D"); // Left arrow — cursor between a and b
 			editor.handleInput("\x1b[13;2~");
@@ -135,6 +140,7 @@ describe("Editor component", () => {
 
 		it("ends the list when breaking a completed empty item", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("1. first\n2. ");
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText()).toBe("1. first\n");
@@ -144,6 +150,7 @@ describe("Editor component", () => {
 
 		it("treats a bare marker ending at the cursor as the next item", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("1.");
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText()).toBe("1.\n2. ");
@@ -151,6 +158,7 @@ describe("Editor component", () => {
 
 		it("leaves non-list lines alone", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("hello\n*em* world");
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText()).toBe("hello\n*em* world\n");
@@ -158,14 +166,14 @@ describe("Editor component", () => {
 
 		it("does not continue a marker glued to its text", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("1.a");
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText()).toBe("1.a\n");
 		});
 
-		it("inserts a plain newline when continuation is disabled", () => {
+		it("stays off until the host opts in", () => {
 			const editor = new Editor(defaultEditorTheme);
-			editor.setListContinuation(false);
 			editor.setText("1. first");
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText()).toBe("1. first\n");
@@ -173,6 +181,7 @@ describe("Editor component", () => {
 
 		it("keeps a bullet literal inside a fenced code block", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("```diff\n- removed");
 			editor.handleInput("\x1b[13;2~"); // Shift+Enter
 			expect(editor.getText()).toBe("```diff\n- removed\n");
@@ -180,6 +189,7 @@ describe("Editor component", () => {
 
 		it("splits inside a fenced code block without adding a marker prefix", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("```\n- removed");
 			for (let i = 0; i < 3; i++) editor.handleInput("\x1b[D"); // Left — before "ved"
 			editor.handleInput("\x1b[13;2~");
@@ -188,6 +198,7 @@ describe("Editor component", () => {
 
 		it("preserves a completed empty item inside a fenced code block", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("```\n- ");
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText()).toBe("```\n- \n");
@@ -195,6 +206,7 @@ describe("Editor component", () => {
 
 		it("resumes list continuation after a valid closing fence", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("```diff\n- removed\n```\n- item");
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText()).toBe("```diff\n- removed\n```\n- item\n- ");
@@ -203,6 +215,7 @@ describe("Editor component", () => {
 
 		it("keeps bullets literal inside a fence nested under a list item", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("1. item\n    ```\n    - literal");
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText()).toBe("1. item\n    ```\n    - literal\n");
@@ -210,6 +223,7 @@ describe("Editor component", () => {
 
 		it("resumes continuation after a nested list fence closes", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("1. item\n    ```\n    - literal\n    ```\n    - item");
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText()).toBe("1. item\n    ```\n    - literal\n    ```\n    - item\n    - ");
@@ -217,6 +231,7 @@ describe("Editor component", () => {
 
 		it("stays literal when a shallower fence-shaped line appears inside a nested fence", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("1. item\n    ```\n    - literal\n```\n    - still literal");
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText()).toBe("1. item\n    ```\n    - literal\n```\n    - still literal\n");
@@ -224,6 +239,7 @@ describe("Editor component", () => {
 
 		it("continues a list after backticks that cannot open a code fence", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("```not `an info string`\n- item");
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText()).toBe("```not `an info string`\n- item\n- ");
@@ -231,6 +247,7 @@ describe("Editor component", () => {
 
 		it("stays inside a fence whose closing marker is shorter than the opener", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("````\ncode\n```\n- literal");
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText()).toBe("````\ncode\n```\n- literal\n");
@@ -238,6 +255,7 @@ describe("Editor component", () => {
 
 		it("stays inside a fence whose closing line carries an info string", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("```\ncode\n```text\n- literal");
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText()).toBe("```\ncode\n```text\n- literal\n");
@@ -245,6 +263,7 @@ describe("Editor component", () => {
 
 		it("keeps a backtick line literal inside a tilde fence", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("~~~\n```\n- literal");
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText()).toBe("~~~\n```\n- literal\n");
@@ -252,6 +271,7 @@ describe("Editor component", () => {
 
 		it("appends a plain newline after a '* * *' thematic break", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("* * *");
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText()).toBe("* * *\n");
@@ -259,6 +279,7 @@ describe("Editor component", () => {
 
 		it("splits a thematic break plainly when the cursor divides it", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("- - -");
 			editor.handleInput("\x1b[D"); // Left
 			editor.handleInput("\x1b[D"); // Left — cursor before " -"
@@ -268,6 +289,7 @@ describe("Editor component", () => {
 
 		it("still continues a bullet whose content opens with the same marker", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("- - item");
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText()).toBe("- - item\n- ");
@@ -275,6 +297,7 @@ describe("Editor component", () => {
 
 		it("still continues a list indented past the fence-indent bound", () => {
 			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
 			editor.setText("- parent\n    - deep");
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText()).toBe("- parent\n    - deep\n    - ");

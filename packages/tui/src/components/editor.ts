@@ -848,9 +848,11 @@ export class Editor implements Component, Focusable {
 		}
 	}
 
-	/** Continue Markdown list items across a newline (`1. a⏎` → `2. `); default on. */
-	#listContinuation = true;
+	/** Host-applied Markdown list continuation flag; see {@link setListContinuation}. */
+	#listContinuation = false;
 
+	/** Continue Markdown list items across a newline (`1. a⏎` → `2. `). Off by default;
+	 *  hosts opt in (omp: the `tui.listContinuation` setting, default on). */
 	setListContinuation(enabled: boolean): void {
 		this.#listContinuation = enabled;
 	}

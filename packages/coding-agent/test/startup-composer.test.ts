@@ -419,9 +419,9 @@ describe("Composer prepaint", () => {
 			vi.spyOn(testSession.session, "maybeStartTitleGeneration").mockImplementation(() => {});
 			await mode.init({ suppressWelcomeIntro: true });
 
-			// The settings selector persists the value before dispatching the side
-			// effect; drive the same save-then-notify sequence.
-			settings.set("tui.listContinuation", false);
+			// The settings selector persists toggles on the session-scoped settings
+			// instance before dispatching the side effect; drive the same source.
+			mode.settings.set("tui.listContinuation", false);
 			selector.handleSettingChange("tui.listContinuation", false);
 			terminal.sendInput("- item");
 			terminal.sendInput("\n");
@@ -444,7 +444,7 @@ describe("Composer prepaint", () => {
 			terminal.sendInput("\n");
 			expect(mode.editor.getExpandedText()).toBe("- item\n- second\n- third\n");
 
-			settings.set("tui.listContinuation", true);
+			mode.settings.set("tui.listContinuation", true);
 			selector.handleSettingChange("tui.listContinuation", true);
 			terminal.sendInput("- next");
 			terminal.sendInput("\n");
