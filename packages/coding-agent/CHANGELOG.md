@@ -2,11 +2,11 @@
 
 ## [Unreleased]
 
-## [18.1.14] - 2026-09-07
 ### Added
 
 - New `tui.listContinuation` setting (Input group in `/settings`) toggles Markdown list continuation and preserves your choice across composer shape changes and editor replacement.
 
+## [18.1.14] - 2026-09-07
 ### Fixed
 
 - The startup update notice counts every change in a release: bullets written above a `###` heading now count under `Other`, and `+`/`*` markers and lightly indented bullets count like `-`.

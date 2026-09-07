@@ -2,11 +2,11 @@
 
 ## [Unreleased]
 
-## [18.1.14] - 2026-09-07
 ### Added
 
 - Markdown lists now continue on newline and end on empty items, preserving numbering and indentation while leaving fenced code and horizontal rules unchanged. Disable with `Editor.setListContinuation(false)`.
 
+## [18.1.14] - 2026-09-07
 ### Fixed
 
 - `extractMarkdownLinks()` now returns one-row visible labels for formatted and multiline links ([#11086](https://github.com/can1357/oh-my-pi/pull/11086) by [@mustafaabidali](https://github.com/mustafaabidali)).

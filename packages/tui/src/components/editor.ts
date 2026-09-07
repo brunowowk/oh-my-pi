@@ -98,26 +98,49 @@ function listContinuation(before: string, after: string): ListContinuation | nul
 	return { before, prefix: `${indent}${bullet}${ws || " "}`, terminate: false };
 }
 
-/** Top-level code fences allow up to three spaces before their marker. */
-const FENCE_LINE_RE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+/** A fenced code block delimiter line: any indent (fences nest inside list items), then
+ *  3+ backticks or tildes; the capture after the marker is the (possibly empty) info string. */
+const FENCE_LINE_RE = /^([\t ]*)(`{3,}|~{3,})(.*)$/;
 
 /** A thematic break: up to 3 spaces of indent, then 3+ of one marker character
  *  (`-`, `*` or `_`), each optionally separated by spaces or tabs. */
 const THEMATIC_BREAK_RE = /^ {0,3}([-*_])[ \t]*(?:\1[ \t]*){2,}$/;
 
-/** Scan preceding lines for an unmatched fence. Nested-list indentation remains unrestricted. */
+/**
+ * Whether the line at `lineIndex` sits inside an open fenced code block: walk the lines
+ * above it, tracking the open fence's marker character, length, and indentation. A line
+ * closes the fence only when it uses the same character, is at least as long, carries no
+ * info string, and sits within three columns of the opener's indent — a fence nested
+ * under a list item closes within its list context, and a shallower fence-shaped line
+ * stays literal.
+ *
+ * Fence-shape at any indent is treated as code state: a backtick line indented past the
+ * top-level fence bound is either a fence nested under a list item or an indented code
+ * block, and both should keep list continuation out of their literal content. Indented
+ * prose is not tracked separately — list indentation and indented code are
+ * indistinguishable without full list-context parsing, and misclassifying nested-list
+ * indentation would break list continuation.
+ */
 function insideFencedCode(lines: readonly string[], lineIndex: number): boolean {
 	let open: string | undefined; // marker character of the currently open fence
 	let openLength = 0;
+	let openIndent = 0;
 	for (let index = 0; index < lineIndex; index++) {
 		const match = FENCE_LINE_RE.exec(lines[index] ?? "");
 		if (!match) continue;
-		const marker = match[1]!;
+		const marker = match[2]!;
+		const indent = match[1]!.length;
 		if (open === undefined) {
-			if (marker[0] === "`" && match[2]!.includes("`")) continue;
+			if (marker[0] === "`" && match[3]!.includes("`")) continue;
 			open = marker[0];
 			openLength = marker.length;
-		} else if (marker[0] === open && marker.length >= openLength && match[2]!.trim() === "") {
+			openIndent = indent;
+		} else if (
+			marker[0] === open &&
+			marker.length >= openLength &&
+			match[3]!.trim() === "" &&
+			Math.abs(indent - openIndent) <= 3
+		) {
 			open = undefined;
 		}
 	}

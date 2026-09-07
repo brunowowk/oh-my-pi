@@ -95,6 +95,31 @@ describe("composer startup cache", () => {
 		}
 	});
 
+	it("treats pre-listContinuation ui caches as the new default", async () => {
+		const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "omp-composer-cache-no-list-"));
+		const key = Bun.hash.wyhash(path.resolve(cwd)).toString(16).padStart(16, "0");
+		const cacheDir = path.join(getComposerCacheDir(), key);
+		try {
+			const legacyPreferences: Record<string, unknown> = { ...COMPOSER_DEFAULTS };
+			delete legacyPreferences.listContinuation;
+			await Bun.write(
+				path.join(cacheDir, "ui.json"),
+				JSON.stringify({
+					version: 1,
+					preferences: legacyPreferences,
+					theme: { symbolPreset: "ascii" },
+				}),
+			);
+
+			expect(readComposerStartupCache(cwd).preferences?.listContinuation).toBe(true);
+		} finally {
+			await Promise.all([
+				fs.rm(cwd, { recursive: true, force: true }),
+				fs.rm(cacheDir, { recursive: true, force: true }),
+			]);
+		}
+	});
+
 	it("loads XDG_CACHE_HOME from the home .env before the first cache access", async () => {
 		if (process.platform === "win32") return;
 

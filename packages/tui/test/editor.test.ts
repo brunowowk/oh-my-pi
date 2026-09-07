@@ -201,6 +201,27 @@ describe("Editor component", () => {
 			expect(editor.debugState().cursorCol).toBe(2);
 		});
 
+		it("keeps bullets literal inside a fence nested under a list item", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("1. item\n    ```\n    - literal");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("1. item\n    ```\n    - literal\n");
+		});
+
+		it("resumes continuation after a nested list fence closes", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("1. item\n    ```\n    - literal\n    ```\n    - item");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("1. item\n    ```\n    - literal\n    ```\n    - item\n    - ");
+		});
+
+		it("stays literal when a shallower fence-shaped line appears inside a nested fence", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setText("1. item\n    ```\n    - literal\n```\n    - still literal");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("1. item\n    ```\n    - literal\n```\n    - still literal\n");
+		});
+
 		it("continues a list after backticks that cannot open a code fence", () => {
 			const editor = new Editor(defaultEditorTheme);
 			editor.setText("```not `an info string`\n- item");

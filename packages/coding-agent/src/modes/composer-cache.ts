@@ -207,7 +207,7 @@ function readUiState(file: string): { preferences: ComposerPreferences; theme: C
 		typeof spellingTypoDetection !== "boolean" ||
 		typeof spellingAutocomplete !== "boolean" ||
 		typeof spellingAutocorrect !== "boolean" ||
-		typeof listContinuation !== "boolean"
+		(listContinuation !== undefined && typeof listContinuation !== "boolean")
 	) {
 		return undefined;
 	}
@@ -241,7 +241,7 @@ function readUiState(file: string): { preferences: ComposerPreferences; theme: C
 			spellingTypoDetection,
 			spellingAutocomplete,
 			spellingAutocorrect,
-			listContinuation,
+			listContinuation: listContinuation ?? true,
 		},
 		theme: { symbolPreset, colorBlindMode, darkTheme, lightTheme },
 	};
