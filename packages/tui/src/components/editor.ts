@@ -68,6 +68,11 @@ function sanitizeLoadedText(text: string): string {
  *  a paragraph, not a list. */
 const LIST_MARKER_RE = /^([\t ]*)(?:(\d{1,9})([.)])|([-*+]))([\t ]*)/;
 
+/** A GFM task checkbox that is the item's whole content: `[ ]`, `[x]`, `[X]`,
+ *  followed only by whitespace. One trailing space belongs to the checkbox
+ *  (marked requires it), so `- [ ] ` is an empty task and `- [x]` is literal. */
+const EMPTY_TASK_CHECKBOX_RE = /^\[[ xX]\][ \t]+$/;
+
 interface ListContinuation {
 	/** Replacement for the text before the cursor on the broken line. */
 	before: string;
@@ -81,9 +86,10 @@ interface ListContinuation {
 /**
  * Continuation for a Markdown list item split by a newline: `1. a` → `2. `,
  * `- a` → `- `, `> - a` → `> - `, preserving the container prefix, indentation, and
- * delimiter. A completed empty item (`1. `, `> - `, nothing else on the line)
- * terminates the list instead — the marker is stripped and the emptied item vanishes
- * (or collapses onto its quote prefix) rather than spawning a permanent empty item.
+ * delimiter. A completed empty item (`1. `, `> - `, `- [x] ` — marker plus at most
+ * a task checkbox) terminates the list instead — the marker is stripped and the
+ * emptied item vanishes (or collapses onto its quote prefix) rather than spawning
+ * a permanent empty item.
  *
  * Returns null when the text before the cursor does not open a list item.
  */
@@ -96,10 +102,14 @@ function listContinuation(before: string, after: string): ListContinuation | nul
 	// A marker without trailing whitespace is not a list (`1.a`, `>-a`); only a bare
 	// marker ending exactly at the cursor (`1.` as the whole input) continues.
 	if (ws === "" && (after !== "" || markerEnd !== before.length)) return null;
-	// A completed empty item (`- `, `> - `) terminates the list. The emptied line
-	// collapses: an indented item vanishes entirely; a quoted line keeps exactly
-	// its quote prefix (`> - ` → `> `) with the cursor after it.
-	if (ws !== "" && after === "" && markerEnd === before.length) {
+	// A completed empty item (`- `, `> - `, `- [x] `) terminates the list. The
+	// emptied line collapses: an indented item vanishes entirely; a quoted line
+	// keeps exactly its quote prefix (`> - ` → `> `) with the cursor after it.
+	if (
+		ws !== "" &&
+		after === "" &&
+		(markerEnd === before.length || EMPTY_TASK_CHECKBOX_RE.test(before.slice(markerEnd)))
+	) {
 		const quote = before.slice(0, markerStart);
 		return { before: quote.includes(">") ? quote : "", prefix: "", terminate: true };
 	}

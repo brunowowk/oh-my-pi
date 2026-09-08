@@ -1185,6 +1185,32 @@ function stableBlockBoundary(
 	return { end, count };
 }
 
+/**
+ * Offset just past the last token that ends a line immediately before a
+ * column-0 ATX heading, together with the token count up to and including it.
+ * A heading can never be a lazy continuation and can never nest inside the
+ * column-0 blocks around it, so splitting right before it is invisible to the
+ * lexer; code and html tokens are skipped because an unclosed fence or block
+ * would swallow the heading, making a cut split it.
+ */
+function headingBlockBoundary(text: string, base: number, tokens: readonly Token[]): { count: number; end: number } {
+	let pos = base;
+	let end = 0;
+	let count = 0;
+	for (let i = 0; i < tokens.length; i++) {
+		const raw = tokens[i]!.raw;
+		const tokenEnd = pos + raw.length;
+		if (tokenEnd < text.length && raw.endsWith("\n") && tokens[i]!.type !== "code" && tokens[i]!.type !== "html") {
+			if (/^#{1,6}(?:[ \t]|\n|$)/.test(text.slice(tokenEnd, tokenEnd + 8))) {
+				end = tokenEnd;
+				count = i + 1;
+			}
+		}
+		pos = tokenEnd;
+	}
+	return count === 0 ? NO_BLOCK_BOUNDARY : { count, end };
+}
+
 // Bun's regex engine skips the start-anchor optimization for several of marked's
 // block rules — `hr`, `lheading`, `table` and `html` are `^`-anchored
 // alternations of quantified branches — so each failing `exec` rescans the whole
@@ -1216,16 +1242,31 @@ const WINDOWED_LEX_MIN_BYTES = 16 * 1024;
  * window that contains no blank line cannot cut: each round starts at the next
  * `"\n\n"` (skipping straight to the end when there is none — e.g. a tail
  * that is one long tight list) instead of probing sizes that cannot succeed.
+ * A tail with no blank line at all is bounded by column-0 headings instead:
+ * every heading line is its own block, so those windows stay small and the
+ * quadratic scan never sees a multi-window stretch.
  */
 function lexWindowed(text: string): Token[] {
 	const lexer = new Lexer(markdownParser.defaults);
 	let offset = 0;
 	while (offset < text.length) {
 		let segment = "";
-		const nextBlank = text.indexOf("\n\n", offset);
-		if (nextBlank === -1) {
-			segment = text.slice(offset);
+		if (text.indexOf("\n\n", offset) === -1) {
+			// No blank line ahead: the blank-line boundary can never fire, but a
+			// column-0 heading still bounds a window — probe for one instead of
+			// lexing the whole remaining document in one quadratic pass.
+			for (let size = LEX_WINDOW_BYTES; segment.length === 0; size *= 2) {
+				if (offset + size >= text.length) {
+					segment = text.slice(offset);
+					break;
+				}
+				const probe = new Lexer(markdownParser.defaults);
+				probe.blockTokens(text.slice(offset, offset + size), probe.tokens);
+				const boundary = headingBlockBoundary(text, offset, probe.tokens);
+				if (boundary.count > 0) segment = text.slice(offset, boundary.end);
+			}
 		} else {
+			const nextBlank = text.indexOf("\n\n", offset);
 			const minSize = Math.max(LEX_WINDOW_BYTES, nextBlank + 2 - offset);
 			for (let size = minSize; segment.length === 0; size *= 2) {
 				if (offset + size >= text.length) {

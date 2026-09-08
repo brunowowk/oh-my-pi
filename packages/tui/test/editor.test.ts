@@ -632,6 +632,45 @@ describe("Editor component", () => {
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText().endsWith("\n- item\n- ")).toBe(true);
 		});
+
+		it("terminates an empty task-list item", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("- [x] a\n- [ ] ");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("- [x] a\n");
+		});
+
+		it("collapses an empty quoted task-list item onto its quote prefix", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("> - [ ] ");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("> \n");
+			expect(editor.debugState().cursorCol).toBe(2);
+		});
+
+		it("continues a task-list item whose checkbox is literal text", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			// No trailing space: the checkbox is item content, not a task marker.
+			editor.setText("- [x]");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("- [x]\n- ");
+		});
+
+		it("continues lists in large drafts without blank-line boundaries", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			// Headings only: no "\n\n" cut exists, so the windowed lexer must
+			// bound the run with heading boundaries instead of one quadratic pass.
+			const headings = Array.from({ length: 1300 }, (_, i) => `### heading ${i} with padding text`).join("\n");
+			editor.setText(`${headings}\n- item`);
+			expect(editor.getText().length).toBeGreaterThan(16 * 1024);
+			expect(editor.getText().includes("\n\n")).toBe(false);
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText().endsWith("\n- item\n- ")).toBe(true);
+		});
 	});
 
 	describe("Prompt history navigation", () => {

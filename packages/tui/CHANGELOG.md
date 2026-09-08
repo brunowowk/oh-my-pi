@@ -6,6 +6,10 @@
 
 - Markdown lists now continue on newline and end on empty items, preserving numbering, indentation, and blockquote prefixes while leaving fenced/indented code and horizontal rules unchanged. Prompt behavior follows the `tui.listContinuation` setting (default on); the `Editor` component itself defaults off and hosts opt in with `setListContinuation(true)`.
 
+### Fixed
+
+- Large Markdown messages made of consecutive headings (no blank lines) no longer freeze rendering: the bounded lexer now also cuts windows at column-0 headings instead of lexing such runs in one pass.
+
 ## [18.1.14] - 2026-09-07
 ### Fixed
 
