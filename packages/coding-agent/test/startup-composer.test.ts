@@ -498,6 +498,54 @@ describe("Composer prepaint", () => {
 		}
 	});
 
+	it("keeps a toggle that the isolated session instance cannot see across editor replacement", async () => {
+		const terminal = new CountingTerminal(80, 24);
+		// The session isolates the setting off; the /settings selector persists the
+		// toggle through the module-global instance. A replacement editor must
+		// inherit the composer's current preference — re-reading the isolated
+		// instance would silently re-disable continuation.
+		const composer = new Composer({ preferences: { ...config, listContinuation: false }, terminal });
+		composer.start();
+		const lease = new ComposerLease(composer);
+		const testSession = await createTestSession({
+			inMemory: true,
+			settingsOverrides: { "tui.listContinuation": false },
+		});
+		const mode = new InteractiveMode(
+			testSession.session,
+			"test",
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			lease.composer,
+		);
+		lease.adopt();
+		const selector = new SelectorController(mode);
+
+		try {
+			vi.spyOn(mode.statusLine, "watchBranch").mockImplementation(() => {});
+			vi.spyOn(testSession.session, "maybeStartTitleGeneration").mockImplementation(() => {});
+			await mode.init({ suppressWelcomeIntro: true });
+
+			selector.handleSettingChange("tui.listContinuation", true);
+			terminal.sendInput("- item");
+			terminal.sendInput("\n");
+			expect(mode.editor.getExpandedText()).toBe("- item\n- ");
+
+			mode.setEditorComponent(undefined);
+			terminal.sendInput("next");
+			terminal.sendInput("\n");
+			expect(mode.editor.getExpandedText()).toBe("- item\n- next\n- ");
+		} finally {
+			mode.stop();
+			lease.dispose();
+			await testSession.cleanup();
+			vi.restoreAllMocks();
+		}
+	});
+
 	it("renders the complete interactive welcome scene on the first frame", async () => {
 		const terminal = new CountingTerminal(80, 32);
 		const composer = new Composer({

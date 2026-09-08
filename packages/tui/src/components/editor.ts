@@ -90,22 +90,30 @@ function listContinuation(before: string, after: string): ListContinuation | nul
 	const markerStart = listContentOffset(before);
 	const match = LIST_MARKER_RE.exec(before.slice(markerStart));
 	if (!match) return null;
-	const container = `${before.slice(0, markerStart)}${match[1]}`;
 	const [, , num, delim, bullet, ws] = match;
 	const markerEnd = markerStart + match[0].length;
 	// A marker without trailing whitespace is not a list (`1.a`, `>-a`); only a bare
 	// marker ending exactly at the cursor (`1.` as the whole input) continues.
 	if (ws === "" && (after !== "" || markerEnd !== before.length)) return null;
+	// A completed empty item (`- `, `> - `) terminates the list. The emptied line
+	// collapses: an indented item vanishes entirely; a quoted line keeps exactly
+	// its quote prefix (`> - ` → `> `) with the cursor after it.
 	if (ws !== "" && after === "" && markerEnd === before.length) {
-		return { before: container, prefix: "", terminate: true };
+		const quote = before.slice(0, markerStart);
+		return { before: quote.includes(">") ? quote : "", prefix: "", terminate: true };
 	}
+	const container = `${before.slice(0, markerStart)}${match[1]}`;
 	if (num !== undefined) {
 		return { before, prefix: `${container}${Number(num) + 1}${delim}${ws || " "}`, terminate: false };
 	}
 	return { before, prefix: `${container}${bullet}${ws || " "}`, terminate: false };
 }
 
-/** Skip quote markers without ambiguous, nested-whitespace regex backtracking. */
+/**
+ * Content offset after any blockquote container prefix (`> `, `> > `): each `>`
+ * consumes exactly one optional following space, so extra spacing is preserved
+ * rather than treated as quote syntax.
+ */
 function listContentOffset(line: string): number {
 	let offset = 0;
 	for (;;) {

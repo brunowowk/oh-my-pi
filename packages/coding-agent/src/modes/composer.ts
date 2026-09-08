@@ -526,6 +526,12 @@ export class Composer implements TerminalFrameProvider {
 	get started(): boolean {
 		return this.#started && !this.#stopped;
 	}
+	/** Current list-continuation preference; the source of truth replacement
+	 *  editors must inherit instead of re-reading a possibly-isolated settings
+	 *  instance the /settings selector cannot write through. */
+	get listContinuation(): boolean {
+		return this.#preferences.listContinuation;
+	}
 
 	/** Start terminal ownership and optionally begin the welcome intro. */
 	start(options: ComposerStartOptions = {}): void {

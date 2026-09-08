@@ -4956,7 +4956,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			autocomplete: this.settings.get("spelling.autocomplete"),
 			autocorrect: this.settings.get("spelling.autocorrect"),
 		});
-		nextEditor.setListContinuation(this.settings.get("tui.listContinuation"));
+		nextEditor.setListContinuation(this.composer.listContinuation);
 		nextEditor.viewportRowsProvider = () => this.ui.terminal.rows;
 		nextEditor.magicKeywordsEnabled = () => this.settings.get("magicKeywords.enabled");
 		nextEditor.imageReferenceHyperlink = imageReferenceHyperlink;
