@@ -607,6 +607,31 @@ describe("Editor component", () => {
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText()).toBe("> $$\n> - x\n\n> $$");
 		});
+
+		it("continues a nested child under a completed task-list item", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			// The parser prepends a synthetic checkbox token whose raw text is
+			// removed from the item text; line mapping must skip it.
+			editor.setText("- [x] a\n  - child");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("- [x] a\n  - child\n  - ");
+		});
+
+		it("continues lists in drafts large enough for the bounded window lexer", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			// Above the 16 KB crossover the renderer lexes in bounded windows;
+			// continuation must classify through the same path, not a bare lex.
+			const filler = Array.from(
+				{ length: 450 },
+				(_, i) => `paragraph ${i} with enough padding text to matter.`,
+			).join("\n\n");
+			editor.setText(`${filler}\n\n- item`);
+			expect(editor.getText().length).toBeGreaterThan(16 * 1024);
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText().endsWith("\n- item\n- ")).toBe(true);
+		});
 	});
 
 	describe("Prompt history navigation", () => {
@@ -617,7 +642,6 @@ describe("Editor component", () => {
 
 			expect(editor.getText()).toBe("");
 		});
-
 		it("shows most recent history entry on Up arrow when editor is empty", () => {
 			const editor = new Editor(defaultEditorTheme);
 

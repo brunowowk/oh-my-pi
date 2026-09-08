@@ -1,6 +1,6 @@
 import { getProjectDir, logger } from "@oh-my-pi/pi-utils";
-import { Lexer, type Token, type Tokens } from "@oh-my-pi/pi-utils/marked";
-import { markdownParser } from "./markdown";
+import { type Token, type Tokens } from "@oh-my-pi/pi-utils/marked";
+import { lexDocument } from "./markdown";
 import {
 	type AutocompleteItem,
 	type AutocompleteProvider,
@@ -137,7 +137,7 @@ function listContentOffset(line: string): number {
  */
 function continuesList(lines: readonly string[], lineIndex: number): boolean {
 	const source = lines.join("\n");
-	const tokens = new Lexer(markdownParser.defaults).blockTokens(source, []);
+	const tokens = lexDocument(source);
 	return listMarkerAt(tokens, source, 0, lineIndex);
 }
 
@@ -179,6 +179,9 @@ function listMarkerAt(children: readonly Token[], parentText: string, baseLine: 
 	const starts = lineStarts(parentText);
 	let from = 0;
 	for (const child of children) {
+		// Synthetic task-list checkboxes carry raw text the parser already
+		// removed from the item text; they own no source span to map.
+		if (child.type === "checkbox") continue;
 		const pos = child.raw === "" ? from : Math.max(from, parentText.indexOf(child.raw, from));
 		from = pos + child.raw.length;
 		const start = baseLine + lineIndexOf(starts, pos);

@@ -1246,8 +1246,7 @@ function lexWindowed(text: string): Token[] {
 	return lexer.tokens;
 }
 
-/** Lex a whole document, windowing anything large enough for the quadratic scan to bite. */
-function lexDocument(text: string): Token[] {
+export function lexDocument(text: string): Token[] {
 	// A CR shifts every `raw` span (marked normalizes CRLF before tokenizing), so
 	// window offsets would address the wrong characters — lex those in one pass.
 	if (text.length < WINDOWED_LEX_MIN_BYTES || text.includes("\r")) return markdownParser.lexer(text);
