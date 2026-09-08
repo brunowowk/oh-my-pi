@@ -520,7 +520,7 @@ class StrictStrikethroughTokenizer extends Tokenizer {
 	}
 }
 
-const markdownParser = new Marked();
+export const markdownParser = new Marked();
 markdownParser.setOptions({
 	tokenizer: new StrictStrikethroughTokenizer(),
 });

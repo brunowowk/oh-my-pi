@@ -572,6 +572,41 @@ describe("Editor component", () => {
 			editor.handleInput("\x1b[13;2~");
 			expect(editor.getText()).toBe("- parent\n  ```\n> - item\n> - ");
 		});
+
+		it("keeps a list-shaped equation line literal inside a display-math block", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("$$\n- x\n$$");
+			for (let i = 0; i < 3; i++) editor.handleInput("\x1b[D"); // Left — end of the "- x" equation line
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("$$\n- x\n\n$$");
+		});
+
+		it("continues a list after a display-math block closes", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("$$\n- x\n$$\n- item");
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("$$\n- x\n$$\n- item\n- ");
+		});
+
+		it("keeps a list-shaped line literal inside display math nested in a list item", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("- $$\n  - x\n  $$");
+			for (let i = 0; i < 5; i++) editor.handleInput("\x1b[D"); // Left — end of the "  - x" equation line
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("- $$\n  - x\n\n  $$");
+		});
+
+		it("keeps a quoted equation line literal inside a display-math block", () => {
+			const editor = new Editor(defaultEditorTheme);
+			editor.setListContinuation(true);
+			editor.setText("> $$\n> - x\n> $$");
+			for (let i = 0; i < 5; i++) editor.handleInput("\x1b[D"); // Left — end of the "> - x" equation line
+			editor.handleInput("\x1b[13;2~");
+			expect(editor.getText()).toBe("> $$\n> - x\n\n> $$");
+		});
 	});
 
 	describe("Prompt history navigation", () => {

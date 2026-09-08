@@ -1,5 +1,6 @@
 import { getProjectDir, logger } from "@oh-my-pi/pi-utils";
 import { Lexer, type Token, type Tokens } from "@oh-my-pi/pi-utils/marked";
+import { markdownParser } from "./markdown";
 import {
 	type AutocompleteItem,
 	type AutocompleteProvider,
@@ -124,30 +125,91 @@ function listContentOffset(line: string): number {
 		if (line[offset] === " " || line[offset] === "\t") offset++;
 	}
 }
-
 /**
- * The cursor line must start a real list item, not merely resemble one inside
- * code, a rule, or paragraph content. Use the shared block grammar so container
- * exits and indentation agree with Markdown rendering; inline tokens are only
- * queued by blockTokens, not parsed.
+ * Whether the line at `lineIndex` sits on a list item's opening marker in the
+ * renderer's block grammar. The full document is lexed once with the same
+ * configured grammar the message renderer uses (display math, custom rules),
+ * and the walk descends through blockquote/list/item containers — their child
+ * text strips container prefixes per line without merging lines, so child
+ * token spans map one-to-one onto source lines. A cursor inside anything that
+ * is not a list marker line — fenced or display-math code, a rule, item body
+ * text — is literal, matching what the renderer will paint.
  */
 function continuesList(lines: readonly string[], lineIndex: number): boolean {
-	const source = (lineIndex === lines.length - 1 ? lines : lines.slice(0, lineIndex + 1)).join("\n");
-	let tokens: Token[] = new Lexer().blockTokens(source);
-	for (;;) {
-		const last = tokens.at(-1);
-		if (last?.type === "blockquote") {
-			tokens = (last as Tokens.Blockquote).tokens;
-			continue;
-		}
-		if (last?.type !== "list") return false;
-		const item = (last as Tokens.List).items.at(-1);
-		if (!item) return false;
-		// With no later line in this item, the cursor is on its opening marker.
-		// Otherwise only a nested list/quote can establish another list marker.
-		if (!item.raw.includes("\n")) return true;
-		tokens = item.tokens;
+	const source = lines.join("\n");
+	const tokens = new Lexer(markdownParser.defaults).blockTokens(source, []);
+	return listMarkerAt(tokens, source, 0, lineIndex);
+}
+
+/** Zero-based index of the source line containing character `offset`. */
+function lineIndexOf(starts: readonly number[], offset: number): number {
+	let low = 0;
+	let high = starts.length - 1;
+	while (low < high) {
+		const mid = (low + high + 1) >> 1;
+		if (starts[mid]! <= offset) low = mid;
+		else high = mid - 1;
 	}
+	return low;
+}
+
+/** Character offset that starts each line of `text`. */
+function lineStarts(text: string): number[] {
+	const starts = [0];
+	for (let at = text.indexOf("\n"); at !== -1; at = text.indexOf("\n", at + 1)) starts.push(at + 1);
+	return starts;
+}
+
+/** Number of source lines a token's raw slice occupies. */
+function rawLines(raw: string): number {
+	if (raw === "") return 0;
+	let lines = 1;
+	for (let at = raw.indexOf("\n"); at !== -1; at = raw.indexOf("\n", at + 1)) {
+		if (at !== raw.length - 1) lines++;
+	}
+	return lines;
+}
+
+/**
+ * Walks sibling tokens (contiguous raw slices of `parentText`) to the one
+ * containing `cursorLine`; blockquotes recurse into their stripped text, and
+ * anything else that is not a list is literal content.
+ */
+function listMarkerAt(children: readonly Token[], parentText: string, baseLine: number, cursorLine: number): boolean {
+	const starts = lineStarts(parentText);
+	let from = 0;
+	for (const child of children) {
+		const pos = child.raw === "" ? from : Math.max(from, parentText.indexOf(child.raw, from));
+		from = pos + child.raw.length;
+		const start = baseLine + lineIndexOf(starts, pos);
+		if (cursorLine < start) return false;
+		if (cursorLine >= start + rawLines(child.raw)) continue;
+		if (child.type === "blockquote") {
+			const quote = child as Tokens.Blockquote;
+			return listMarkerAt(quote.tokens, quote.text, start, cursorLine);
+		}
+		if (child.type === "list") return itemMarkerAt(child as Tokens.List, start, cursorLine);
+		return false;
+	}
+	return false;
+}
+
+/** Locates the list item containing the cursor: its opening line continues
+ *  the list; anything deeper descends into the item's own tokens. */
+function itemMarkerAt(list: Tokens.List, baseLine: number, cursorLine: number): boolean {
+	const raw = list.raw;
+	const starts = lineStarts(raw);
+	let from = 0;
+	for (const item of list.items) {
+		const pos = item.raw === "" ? from : Math.max(from, raw.indexOf(item.raw, from));
+		from = pos + item.raw.length;
+		const start = baseLine + lineIndexOf(starts, pos);
+		if (cursorLine < start) return false;
+		if (cursorLine === start) return true;
+		if (cursorLine >= start + rawLines(item.raw)) continue;
+		return listMarkerAt(item.tokens, item.text, start, cursorLine);
+	}
+	return false;
 }
 
 const segmenter = getSegmenter();
